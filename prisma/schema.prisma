@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Session {
+  id                String    @id
+  shop              String
+  state             String
+  isOnline          Boolean   @default(false)
+  scope             String?
+  expires           DateTime?
+  accessToken       String
+  userId            BigInt?
+  firstName         String?
+  lastName          String?
+  email             String?
+  accountOwner      Boolean   @default(false)
+  locale            String?
+  collaborator      Boolean?  @default(false)
+  emailVerified     Boolean?  @default(false)
+  refreshToken      String?
+  refreshTokenExpires DateTime?
+}
+
+model Store {
+  id          String   @id @default(cuid())
+  shop        String   @unique
+  accessToken String
+  pixelId     String   @unique @default(cuid())
+  createdAt   DateTime @default(now())
+  campaigns   Campaign[]
+  events      Event[]
+  orders      Order[]
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id])
+  name        String
+  status      String   @default("active")
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  influencers Influencer[]
+}
+
+model Influencer {
+  id           String   @id @default(cuid())
+  campaignId   String
+  campaign     Campaign @relation(fields: [campaignId], references: [id])
+  name         String
+  handle       String
+  platform     String   @default("instagram")
+  wfId         String   @unique
+  targetUrl    String
+  trackingUrl  String
+  createdAt    DateTime @default(now())
+  events       Event[]
+  orders       Order[]
+}
+
+model Event {
+  id             String   @id @default(cuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id])
+  influencerId   String?
+  influencer     Influencer? @relation(fields: [influencerId], references: [id])
+  wfId           String?
+  sessionId      String
+  eventType      String
+  productId      String?
+  productTitle   String?
+  variantId      String?
+  variantTitle   String?
+  price          Float?
+  quantity       Int?
+  pageUrl        String?
+  timestamp      DateTime @default(now())
+}
+
+model Order {
+  id             String   @id @default(cuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id])
+  influencerId   String?
+  influencer     Influencer? @relation(fields: [influencerId], references: [id])
+  shopifyOrderId String
+  wfId           String?
+  totalPrice     Float
+  currency       String   @default("USD")
+  lineItems      Json
+  createdAt      DateTime @default(now())
+}
