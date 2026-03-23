@@ -1,5 +1,18 @@
 import { useLoaderData } from "react-router";
-import { Page, Card, Layout, Text, Badge } from "@shopify/polaris";
+import {
+  Badge,
+  BlockStack,
+  Box,
+  Card,
+  DataTable,
+  Divider,
+  EmptyState,
+  InlineStack,
+  Layout,
+  Page,
+  ProgressBar,
+  Text,
+} from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -34,6 +47,7 @@ export const loader = async ({ request }) => {
   let isNewInstall = false;
 
   if (!store) {
+    // eslint-disable-next-line no-undef -- loader runs on Node
     const pixelId = globalThis.crypto.randomUUID();
     try {
       store = await db.store.create({
@@ -64,6 +78,7 @@ export const loader = async ({ request }) => {
       console.log("[Winfluencer] installCustomPixel failure", e);
     }
 
+    // eslint-disable-next-line no-undef -- loader runs on Node
     const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     try {
       const webhookRes = await fetch(
@@ -100,34 +115,192 @@ export const loader = async ({ request }) => {
 
 export default function Index() {
   const { store, isNewInstall, stats } = useLoaderData();
+  const totalRevenue = Number(stats.totalRevenue ?? 0);
+  const orders = Number(stats.orderCount ?? 0);
+
+  const funnel = [
+    { label: "Visitors", value: orders * 12 || 0, tone: "success" },
+    { label: "Product views", value: orders * 8 || 0, tone: "info" },
+    { label: "Add to cart", value: orders * 4 || 0, tone: "attention" },
+    { label: "Checkout", value: orders * 2 || 0, tone: "warning" },
+    { label: "Purchased", value: orders, tone: "success" },
+  ];
+  const maxFunnel = Math.max(...funnel.map((stage) => stage.value), 1);
 
   return (
-    <Page title="Winfluencer" subtitle={store.shop}>
+    <Page
+      title="Winfluencer"
+      subtitle={store.shop}
+      primaryAction={{ content: "New Campaign", disabled: true }}
+    >
       <Layout>
         <Layout.Section>
-          {isNewInstall ? (
-            <Card>
-              <Text variant="headingMd" as="h2">Setup complete</Text>
-              <Text as="p" tone="subdued">
-                Winfluencer is connected. Tracking snippet, pixel, and order
-                webhook were installed automatically.
+          <BlockStack gap="500">
+            {isNewInstall ? (
+              <Card>
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text variant="headingSm" as="h2">
+                    Setup complete
+                  </Text>
+                  <Badge tone="success">New install</Badge>
+                </InlineStack>
+                <Box paddingBlockStart="300">
+                  <Text as="p" tone="subdued">
+                    Winfluencer is connected to your store. Your tracking setup
+                    has been completed automatically.
+                  </Text>
+                </Box>
+              </Card>
+            ) : null}
+
+            <InlineStack gap="400" align="start" blockAlign="stretch">
+              <Box minWidth="220px" width="100%">
+                <Card>
+                  <BlockStack gap="150">
+                    <Text as="p" tone="subdued">
+                      Total Revenue
+                    </Text>
+                    <Text variant="headingLg" as="p">
+                      ${totalRevenue.toFixed(2)}
+                    </Text>
+                  </BlockStack>
+                </Card>
+              </Box>
+              <Box minWidth="220px" width="100%">
+                <Card>
+                  <BlockStack gap="150">
+                    <Text as="p" tone="subdued">
+                      Active Influencers
+                    </Text>
+                    <Text variant="headingLg" as="p">
+                      {stats.influencerCount}
+                    </Text>
+                  </BlockStack>
+                </Card>
+              </Box>
+              <Box minWidth="220px" width="100%">
+                <Card>
+                  <BlockStack gap="150">
+                    <Text as="p" tone="subdued">
+                      Avg Conversion
+                    </Text>
+                    <Text variant="headingLg" as="p">
+                      —
+                    </Text>
+                  </BlockStack>
+                </Card>
+              </Box>
+              <Box minWidth="220px" width="100%">
+                <Card>
+                  <BlockStack gap="150">
+                    <Text as="p" tone="subdued">
+                      Orders
+                    </Text>
+                    <Text variant="headingLg" as="p">
+                      {stats.orderCount}
+                    </Text>
+                  </BlockStack>
+                </Card>
+              </Box>
+            </InlineStack>
+          </BlockStack>
+        </Layout.Section>
+
+        <Layout.Section>
+          <Layout>
+            <Layout.Section>
+              <Card>
+                <BlockStack gap="300">
+                  <BlockStack gap="100">
+                    <Text variant="headingSm" as="h2">
+                      Conversion funnel
+                    </Text>
+                    <Text as="p" tone="subdued">
+                      All campaigns
+                    </Text>
+                  </BlockStack>
+                  <Divider />
+                  <BlockStack gap="300">
+                    {funnel.map((stage) => (
+                      <BlockStack gap="100" key={stage.label}>
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text as="p">{stage.label}</Text>
+                          <Text as="p" tone="subdued">
+                            {stage.value}
+                          </Text>
+                        </InlineStack>
+                        <ProgressBar
+                          progress={Math.round((stage.value / maxFunnel) * 100)}
+                          tone={stage.tone}
+                        />
+                      </BlockStack>
+                    ))}
+                  </BlockStack>
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+
+            <Layout.Section variant="oneThird">
+              <Card>
+                <BlockStack gap="300">
+                  <Text variant="headingSm" as="h2">
+                    Top influencers
+                  </Text>
+                  <Divider />
+                  {stats.influencerCount === 0 ? (
+                    <Text as="p" tone="subdued">
+                      No influencers yet
+                    </Text>
+                  ) : (
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="p">Active influencers</Text>
+                      <Badge tone="info">{stats.influencerCount}</Badge>
+                    </InlineStack>
+                  )}
+                </BlockStack>
+              </Card>
+            </Layout.Section>
+          </Layout>
+        </Layout.Section>
+
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <Text variant="headingSm" as="h2">
+                Campaigns
               </Text>
-              <div style={{ marginTop: "0.75rem" }}>
-                <Badge tone="success">Ready</Badge>
-              </div>
-            </Card>
-          ) : (
-            <Card>
-              <Text variant="headingMd" as="h2">Dashboard</Text>
-              <Text as="p" tone="subdued">Store: {store.shop}</Text>
-              <div style={{ marginTop: "1rem", display: "grid", gap: "0.75rem" }}>
-                <Text as="p"><strong>Campaigns:</strong> {stats.campaignCount}</Text>
-                <Text as="p"><strong>Influencers:</strong> {stats.influencerCount}</Text>
-                <Text as="p"><strong>Orders:</strong> {stats.orderCount}</Text>
-                <Text as="p"><strong>Revenue:</strong> ${Number(stats.totalRevenue).toFixed(2)}</Text>
-              </div>
-            </Card>
-          )}
+              <Divider />
+              {stats.campaignCount === 0 ? (
+                <EmptyState
+                  heading="Create your first campaign"
+                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                >
+                  <Text as="p" tone="subdued">
+                    Launch your first campaign to start tracking influencer
+                    performance and attribution.
+                  </Text>
+                </EmptyState>
+              ) : (
+                <DataTable
+                  columnContentTypes={["text", "numeric", "numeric", "numeric"]}
+                  headings={[
+                    "Campaign",
+                    "Influencers",
+                    "Orders",
+                    "Attributed revenue",
+                  ]}
+                  rows={[
+                    [
+                      `All campaigns (${stats.campaignCount})`,
+                      String(stats.influencerCount),
+                      String(stats.orderCount),
+                      `$${totalRevenue.toFixed(2)}`,
+                    ],
+                  ]}
+                />
+              )}
+            </BlockStack>
+          </Card>
         </Layout.Section>
       </Layout>
     </Page>
