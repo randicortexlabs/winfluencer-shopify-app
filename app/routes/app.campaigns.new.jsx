@@ -1,4 +1,3 @@
-import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useMemo, useState } from "react";
 import {
   Form,
@@ -20,6 +19,7 @@ import {
   Text,
   TextField,
 } from "@shopify/polaris";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
