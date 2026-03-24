@@ -1,5 +1,4 @@
-import { boundary } from "@shopify/shopify-app-react-router/server";
-import { Link, useLoaderData, useNavigate } from "react-router";
+import { Link, useLoaderData } from "react-router";
 import {
   Badge,
   Button,
@@ -10,6 +9,7 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
@@ -31,40 +31,20 @@ function formatDate(value) {
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
-
-  if (!store) {
-    throw new Response("Store not found", { status: 404 });
-  }
+  if (!store) throw new Response("Store not found", { status: 404 });
 
   const baseCampaigns = await db.campaign.findMany({
     where: { storeId: store.id },
-    include: {
-      _count: {
-        select: {
-          influencers: true,
-        },
-      },
-    },
+    include: { _count: { select: { influencers: true } } },
     orderBy: { createdAt: "desc" },
   });
 
   const campaigns = await Promise.all(
     baseCampaigns.map(async (campaign) => {
       const ordersCount = await db.order.count({
-        where: {
-          influencer: {
-            campaignId: campaign.id,
-          },
-        },
+        where: { influencer: { campaignId: campaign.id } },
       });
-
-      return {
-        ...campaign,
-        _count: {
-          ...campaign._count,
-          orders: ordersCount,
-        },
-      };
+      return { ...campaign, _count: { ...campaign._count, orders: ordersCount } };
     }),
   );
 
@@ -73,26 +53,30 @@ export const loader = async ({ request }) => {
 
 export default function CampaignsListPage() {
   const { campaigns } = useLoaderData();
-  const navigate = useNavigate();
 
   return (
-    <Page
-      title="Campaigns"
-      primaryAction={{ content: "New Campaign", onAction: () => navigate("/app/campaigns/new") }}
-    >
+    <Page title="Campaigns">
+      <ui-title-bar title="Campaigns">
+        <Link to="/app/campaigns/new">
+          <button variant="primary">New Campaign</button>
+        </Link>
+      </ui-title-bar>
       <Layout>
         <Layout.Section>
           <Card>
             {campaigns.length === 0 ? (
               <EmptyState
                 heading="No campaigns yet"
-                action={{ content: "Create campaign", onAction: () => navigate("/app/campaigns/new") }}
                 image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
               >
                 <Text as="p" tone="subdued">
-                  Create your first campaign to start assigning influencers and
-                  tracking attribution.
+                  Create your first campaign to start assigning influencers and tracking attribution.
                 </Text>
+                <div style={{ marginTop: "12px" }}>
+                  <Link to="/app/campaigns/new">
+                    <Button variant="primary">Create campaign</Button>
+                  </Link>
+                </div>
               </EmptyState>
             ) : (
               <IndexTable
@@ -105,30 +89,21 @@ export default function CampaignsListPage() {
                   { title: "Influencers" },
                   { title: "Orders" },
                   { title: "Start date" },
-                  { title: "Actions" },
                 ]}
               >
                 {campaigns.map((campaign, index) => (
-                  <IndexTable.Row
-                    id={campaign.id}
-                    key={campaign.id}
-                    position={index}
-                    onClick={() => navigate(`/app/campaigns/${campaign.id}`)}
-                  >
+                  <IndexTable.Row id={campaign.id} key={campaign.id} position={index}>
                     <IndexTable.Cell>
-                    <Text as="span" fontWeight="semibold">{campaign.name}</Text>
+                      <Link to={`/app/campaigns/${campaign.id}`}>
+                        <Text as="span" fontWeight="semibold">{campaign.name}</Text>
+                      </Link>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Badge tone={statusTone(campaign.status)}>
-                        {campaign.status}
-                      </Badge>
+                      <Badge tone={statusTone(campaign.status)}>{campaign.status}</Badge>
                     </IndexTable.Cell>
                     <IndexTable.Cell>{campaign._count.influencers}</IndexTable.Cell>
                     <IndexTable.Cell>{campaign._count.orders}</IndexTable.Cell>
                     <IndexTable.Cell>{formatDate(campaign.startDate)}</IndexTable.Cell>
-                    <IndexTable.Cell>
-                    <Button variant="plain" onClick={() => navigate(`/app/campaigns/${campaign.id}`)}>View</Button>
-                    </IndexTable.Cell>
                   </IndexTable.Row>
                 ))}
               </IndexTable>
@@ -139,4 +114,5 @@ export default function CampaignsListPage() {
     </Page>
   );
 }
+
 export const headers = (headersArgs) => boundary.headers(headersArgs);

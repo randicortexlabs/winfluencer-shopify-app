@@ -1,7 +1,8 @@
-import { useLoaderData, useNavigate } from "react-router";
+import { Link, useLoaderData } from "react-router";
 import {
   Badge,
   BlockStack,
+  Button,
   Card,
   DataTable,
   Divider,
@@ -69,14 +70,12 @@ export const loader = async ({ request }) => {
     } catch (e) {
       console.log("[Winfluencer] injectSnippetIntoTheme failure", e);
     }
-
     try {
       const pixelResult = await installCustomPixel(shop, accessToken, store.pixelId);
       console.log("[Winfluencer] installCustomPixel", pixelResult.ok ? "success" : "failure");
     } catch (e) {
       console.log("[Winfluencer] installCustomPixel failure", e);
     }
-
     // eslint-disable-next-line no-undef
     const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     try {
@@ -102,19 +101,16 @@ export const loader = async ({ request }) => {
     } catch (e) {
       console.log("[Winfluencer] webhook registration failure", e);
     }
-
     console.log("[Winfluencer] first-install setup finished for", shop);
   }
 
   if (!store) throw new Response("Store not available", { status: 500 });
-
   const stats = await loadStats(store.id);
   return { store, isNewInstall, stats };
 };
 
 export default function Index() {
   const { store, isNewInstall, stats } = useLoaderData();
-  const navigate = useNavigate();
   const totalRevenue = Number(stats.totalRevenue ?? 0);
   const orders = Number(stats.orderCount ?? 0);
 
@@ -131,10 +127,14 @@ export default function Index() {
     <Page
       title="Winfluencer"
       subtitle={store.shop}
-      primaryAction={{ content: "New Campaign", onAction: () => navigate("/app/campaigns/new") }}
+      primaryAction={{
+        content: "New Campaign",
+        // eslint-disable-next-line no-undef
+        onAction: () => window.open("/app/campaigns/new", "_self"),
+      }}
     >
+      <ui-title-bar title="Winfluencer" />
       <Layout>
-
         {isNewInstall ? (
           <Layout.Section>
             <Card>
@@ -153,41 +153,11 @@ export default function Index() {
         ) : null}
 
         <Layout.Section>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "16px"
-          }}>
-            <Card>
-              <BlockStack gap="150">
-                <Text as="p" tone="subdued">Total Revenue</Text>
-                <Text variant="headingLg" as="p">
-                  ${totalRevenue.toFixed(2)}
-                </Text>
-              </BlockStack>
-            </Card>
-            <Card>
-              <BlockStack gap="150">
-                <Text as="p" tone="subdued">Active Influencers</Text>
-                <Text variant="headingLg" as="p">
-                  {stats.influencerCount}
-                </Text>
-              </BlockStack>
-            </Card>
-            <Card>
-              <BlockStack gap="150">
-                <Text as="p" tone="subdued">Avg Conversion</Text>
-                <Text variant="headingLg" as="p">—</Text>
-              </BlockStack>
-            </Card>
-            <Card>
-              <BlockStack gap="150">
-                <Text as="p" tone="subdued">Orders</Text>
-                <Text variant="headingLg" as="p">
-                  {stats.orderCount}
-                </Text>
-              </BlockStack>
-            </Card>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+            <Card><BlockStack gap="150"><Text as="p" tone="subdued">Total Revenue</Text><Text variant="headingLg" as="p">${totalRevenue.toFixed(2)}</Text></BlockStack></Card>
+            <Card><BlockStack gap="150"><Text as="p" tone="subdued">Active Influencers</Text><Text variant="headingLg" as="p">{stats.influencerCount}</Text></BlockStack></Card>
+            <Card><BlockStack gap="150"><Text as="p" tone="subdued">Avg Conversion</Text><Text variant="headingLg" as="p">—</Text></BlockStack></Card>
+            <Card><BlockStack gap="150"><Text as="p" tone="subdued">Orders</Text><Text variant="headingLg" as="p">{stats.orderCount}</Text></BlockStack></Card>
           </div>
         </Layout.Section>
 
@@ -208,17 +178,13 @@ export default function Index() {
                           <Text as="p">{stage.label}</Text>
                           <Text as="p" tone="subdued">{stage.value}</Text>
                         </InlineStack>
-                        <ProgressBar
-                          progress={Math.round((stage.value / maxFunnel) * 100)}
-                          tone={stage.tone}
-                        />
+                        <ProgressBar progress={Math.round((stage.value / maxFunnel) * 100)} tone={stage.tone} />
                       </BlockStack>
                     ))}
                   </BlockStack>
                 </BlockStack>
               </Card>
             </Layout.Section>
-
             <Layout.Section variant="oneThird">
               <Card>
                 <BlockStack gap="300">
@@ -241,16 +207,21 @@ export default function Index() {
         <Layout.Section>
           <Card>
             <BlockStack gap="300">
-              <Text variant="headingSm" as="h2">Campaigns</Text>
+              <InlineStack align="space-between" blockAlign="center">
+                <Text variant="headingSm" as="h2">Campaigns</Text>
+                <Link to="/app/campaigns">
+                  <Button variant="plain">View all</Button>
+                </Link>
+              </InlineStack>
               <Divider />
               {stats.campaignCount === 0 ? (
                 <EmptyState
                   heading="Create your first campaign"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                  action={{ content: "Create campaign", url: "/app/campaigns/new" }}
                 >
                   <Text as="p" tone="subdued">
-                    Launch your first campaign to start tracking influencer
-                    performance and attribution.
+                    Launch your first campaign to start tracking influencer performance and attribution.
                   </Text>
                 </EmptyState>
               ) : (
@@ -268,7 +239,6 @@ export default function Index() {
             </BlockStack>
           </Card>
         </Layout.Section>
-
       </Layout>
     </Page>
   );

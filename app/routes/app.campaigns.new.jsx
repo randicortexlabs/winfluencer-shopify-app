@@ -1,23 +1,8 @@
 import { useMemo, useState } from "react";
+import { Form, Link, redirect, useActionData, useLoaderData } from "react-router";
 import {
-  Form,
-  redirect,
-  useActionData,
-  useLoaderData,
-  useNavigate,
-} from "react-router";
-import {
-  Banner,
-  BlockStack,
-  Button,
-  Card,
-  Divider,
-  FormLayout,
-  InlineStack,
-  Page,
-  Select,
-  Text,
-  TextField,
+  Banner, BlockStack, Button, Card, Divider,
+  FormLayout, InlineStack, Page, Select, Text, TextField,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -30,12 +15,8 @@ const PLATFORM_OPTIONS = [
   { label: "Other", value: "other" },
 ];
 
-function createInfluencerRow() {
-  return {
-    name: "",
-    handle: "",
-    platform: "instagram",
-  };
+function createRow() {
+  return { name: "", handle: "", platform: "instagram" };
 }
 
 function buildTrackingUrl(baseUrl, wfId) {
@@ -44,29 +25,22 @@ function buildTrackingUrl(baseUrl, wfId) {
     url.searchParams.set("wf_id", wfId);
     return url.toString();
   } catch {
-    const separator = baseUrl.includes("?") ? "&" : "?";
-    return `${baseUrl}${separator}wf_id=${wfId}`;
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    return `${baseUrl}${sep}wf_id=${wfId}`;
   }
 }
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
-
-  if (!store) {
-    throw new Response("Store not found", { status: 404 });
-  }
-
+  if (!store) throw new Response("Store not found", { status: 404 });
   return { store };
 };
 
 export const action = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
-
-  if (!store) {
-    throw new Response("Store not found", { status: 404 });
-  }
+  if (!store) throw new Response("Store not found", { status: 404 });
 
   const formData = await request.formData();
   const campaignName = String(formData.get("name") || "").trim();
@@ -75,21 +49,13 @@ export const action = async ({ request }) => {
   const storeUrlInput = String(formData.get("storeUrl") || "").trim();
   const influencersRaw = String(formData.get("influencers") || "[]");
 
-  if (!campaignName) {
-    return {
-      error: "Campaign name is required.",
-    };
-  }
+  if (!campaignName) return { error: "Campaign name is required." };
 
   let influencers = [];
   try {
     const parsed = JSON.parse(influencersRaw);
-    if (Array.isArray(parsed)) {
-      influencers = parsed;
-    }
-  } catch {
-    influencers = [];
-  }
+    if (Array.isArray(parsed)) influencers = parsed;
+  } catch { influencers = []; }
 
   const targetUrl = storeUrlInput || `https://${store.shop}`;
 
@@ -102,27 +68,25 @@ export const action = async ({ request }) => {
     },
   });
 
-  const normalizedInfluencers = influencers
-    .map((influencer) => ({
-      name: String(influencer?.name || "").trim(),
-      handle: String(influencer?.handle || "").trim(),
-      platform: String(influencer?.platform || "instagram").trim() || "instagram",
+  const valid = influencers
+    .map((i) => ({
+      name: String(i?.name || "").trim(),
+      handle: String(i?.handle || "").trim(),
+      platform: String(i?.platform || "instagram"),
     }))
-    .filter((influencer) => influencer.name && influencer.handle);
+    .filter((i) => i.name && i.handle);
 
-  for (const influencer of normalizedInfluencers) {
+  for (const inf of valid) {
     const wfId = globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-    const trackingUrl = buildTrackingUrl(targetUrl, wfId);
-
     await db.influencer.create({
       data: {
         campaignId: campaign.id,
-        name: influencer.name,
-        handle: influencer.handle,
-        platform: influencer.platform,
+        name: inf.name,
+        handle: inf.handle,
+        platform: inf.platform,
         wfId,
         targetUrl,
-        trackingUrl,
+        trackingUrl: buildTrackingUrl(targetUrl, wfId),
       },
     });
   }
@@ -133,79 +97,36 @@ export const action = async ({ request }) => {
 export default function NewCampaignPage() {
   const { store } = useLoaderData();
   const actionData = useActionData();
-  const navigate = useNavigate();
 
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [storeUrl, setStoreUrl] = useState(`https://${store.shop}`);
-  const [influencers, setInfluencers] = useState([createInfluencerRow()]);
+  const [influencers, setInfluencers] = useState([createRow()]);
 
-  const influencersPayload = useMemo(
-    () => JSON.stringify(influencers),
-    [influencers],
-  );
+  const influencersPayload = useMemo(() => JSON.stringify(influencers), [influencers]);
 
-  const updateInfluencer = (index, field, value) => {
+  const update = (index, field, value) =>
     setInfluencers((prev) =>
-      prev.map((row, rowIndex) =>
-        rowIndex === index ? { ...row, [field]: value } : row,
-      ),
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
     );
-  };
-
-  const addInfluencer = () => {
-    setInfluencers((prev) => [...prev, createInfluencerRow()]);
-  };
-
-  const removeInfluencer = (index) => {
-    setInfluencers((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
-  };
 
   return (
-    <Page
-      title="New Campaign"
-      backAction={{ content: "Campaigns", onAction: () => navigate("/app/campaigns") }}
-      secondaryActions={[
-        {
-          content: "Cancel",
-          onAction: () => navigate("/app/campaigns"),
-        },
-      ]}
-    >
+    <Page title="New Campaign">
+      <ui-title-bar title="New Campaign">
+        <Link to="/app/campaigns">
+          <button variant="breadcrumb">Campaigns</button>
+        </Link>
+      </ui-title-bar>
       <Card>
         <Form method="post">
           <BlockStack gap="400">
-            {actionData?.error ? (
-              <Banner tone="critical" title={actionData.error} />
-            ) : null}
-
+            {actionData?.error && <Banner tone="critical" title={actionData.error} />}
             <FormLayout>
-              <TextField
-                label="Campaign name"
-                name="name"
-                value={name}
-                onChange={setName}
-                autoComplete="off"
-                requiredIndicator
-              />
+              <TextField label="Campaign name" name="name" value={name} onChange={setName} autoComplete="off" requiredIndicator />
               <InlineStack gap="300" align="start">
-                <TextField
-                  type="date"
-                  label="Start date"
-                  name="startDate"
-                  value={startDate}
-                  onChange={setStartDate}
-                  autoComplete="off"
-                />
-                <TextField
-                  type="date"
-                  label="End date"
-                  name="endDate"
-                  value={endDate}
-                  onChange={setEndDate}
-                  autoComplete="off"
-                />
+                <TextField type="date" label="Start date" name="startDate" value={startDate} onChange={setStartDate} autoComplete="off" />
+                <TextField type="date" label="End date" name="endDate" value={endDate} onChange={setEndDate} autoComplete="off" />
               </InlineStack>
               <TextField
                 label="Store URL for tracking"
@@ -217,72 +138,32 @@ export default function NewCampaignPage() {
                 helpText="Visitors from influencer links will be tracked on this URL"
               />
             </FormLayout>
-
             <Divider />
-
-            <BlockStack gap="300">
-              <Text as="h2" variant="headingSm">
-                Add influencers
-              </Text>
-
-              {influencers.map((influencer, index) => (
-                <Card key={`influencer-row-${index}`}>
-                  <BlockStack gap="300">
-                    <FormLayout>
-                      <TextField
-                        label="Influencer name"
-                        value={influencer.name}
-                        onChange={(value) =>
-                          updateInfluencer(index, "name", value)
-                        }
-                        autoComplete="off"
-                      />
-                      <TextField
-                        label="Handle/username"
-                        value={influencer.handle}
-                        onChange={(value) =>
-                          updateInfluencer(index, "handle", value)
-                        }
-                        autoComplete="off"
-                        prefix="@"
-                      />
-                      <Select
-                        label="Platform"
-                        options={PLATFORM_OPTIONS}
-                        value={influencer.platform}
-                        onChange={(value) =>
-                          updateInfluencer(index, "platform", value)
-                        }
-                      />
-                    </FormLayout>
-
-                    <InlineStack align="space-between">
-                      <Button variant="plain" onClick={addInfluencer}>
-                        Add another influencer
+            <Text as="h2" variant="headingSm">Add influencers</Text>
+            {influencers.map((inf, index) => (
+              <Card key={index}>
+                <BlockStack gap="300">
+                  <FormLayout>
+                    <TextField label="Influencer name" value={inf.name} onChange={(v) => update(index, "name", v)} autoComplete="off" />
+                    <TextField label="Handle/username" value={inf.handle} onChange={(v) => update(index, "handle", v)} autoComplete="off" prefix="@" />
+                    <Select label="Platform" options={PLATFORM_OPTIONS} value={inf.platform} onChange={(v) => update(index, "platform", v)} />
+                  </FormLayout>
+                  <InlineStack align="space-between">
+                    <Button variant="plain" onClick={() => setInfluencers((p) => [...p, createRow()])}>
+                      Add another influencer
+                    </Button>
+                    {index > 0 && (
+                      <Button tone="critical" variant="plain" onClick={() => setInfluencers((p) => p.filter((_, i) => i !== index))}>
+                        Remove
                       </Button>
-                      {index > 0 ? (
-                        <Button
-                          tone="critical"
-                          variant="plain"
-                          onClick={() => removeInfluencer(index)}
-                        >
-                          Remove
-                        </Button>
-                      ) : (
-                        <span />
-                      )}
-                    </InlineStack>
-                  </BlockStack>
-                </Card>
-              ))}
-            </BlockStack>
-
+                    )}
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+            ))}
             <input type="hidden" name="influencers" value={influencersPayload} />
-
             <InlineStack align="end">
-              <Button submit variant="primary">
-                Create campaign
-              </Button>
+              <Button submit variant="primary">Create campaign</Button>
             </InlineStack>
           </BlockStack>
         </Form>
@@ -290,4 +171,5 @@ export default function NewCampaignPage() {
     </Page>
   );
 }
+
 export const headers = (headersArgs) => boundary.headers(headersArgs);
