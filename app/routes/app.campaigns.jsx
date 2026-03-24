@@ -1,7 +1,6 @@
 import { Link, useLoaderData } from "react-router";
 import {
   Badge,
-  Button,
   Card,
   EmptyState,
   IndexTable,
@@ -74,7 +73,7 @@ export default function CampaignsListPage() {
                 </Text>
                 <div style={{ marginTop: "12px" }}>
                   <Link to="/app/campaigns/new">
-                    <Button variant="primary">Create campaign</Button>
+                    <button>Create campaign</button>
                   </Link>
                 </div>
               </EmptyState>

@@ -124,16 +124,12 @@ export default function Index() {
   const maxFunnel = Math.max(...funnel.map((s) => s.value), 1);
 
   return (
-    <Page
-      title="Winfluencer"
-      subtitle={store.shop}
-      primaryAction={{
-        content: "New Campaign",
-        // eslint-disable-next-line no-undef
-        onAction: () => window.open("/app/campaigns/new", "_self"),
-      }}
-    >
-      <ui-title-bar title="Winfluencer" />
+    <Page title="Winfluencer" subtitle={store.shop}>
+      <ui-title-bar title="Winfluencer">
+        <Link to="/app/campaigns/new">
+          <button variant="primary">New Campaign</button>
+        </Link>
+      </ui-title-bar>
       <Layout>
         {isNewInstall ? (
           <Layout.Section>
@@ -218,11 +214,15 @@ export default function Index() {
                 <EmptyState
                   heading="Create your first campaign"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                  action={{ content: "Create campaign", url: "/app/campaigns/new" }}
                 >
                   <Text as="p" tone="subdued">
                     Launch your first campaign to start tracking influencer performance and attribution.
                   </Text>
+                  <div style={{ marginTop: "12px" }}>
+                    <Link to="/app/campaigns/new">
+                      <Button variant="primary">Create campaign</Button>
+                    </Link>
+                  </div>
                 </EmptyState>
               ) : (
                 <DataTable

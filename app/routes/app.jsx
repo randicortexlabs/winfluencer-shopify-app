@@ -1,7 +1,8 @@
-import { Outlet, useLoaderData, useRouteError } from "react-router";
+import { Link, Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider as ShopifyAppProvider } from "@shopify/shopify-app-react-router/react";
 import { AppProvider as PolarisAppProvider } from "@shopify/polaris";
+import { NavMenu } from "@shopify/app-bridge-react";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import "@shopify/polaris/build/esm/styles.css";
 import { authenticate } from "../shopify.server";
@@ -17,11 +18,11 @@ export default function App() {
 
   return (
     <ShopifyAppProvider embedded apiKey={apiKey}>
-      <PolarisAppProvider i18n={enTranslations}>
-        <ui-nav-menu>
-          <a href="/app" rel="home">Home</a>
-          <a href="/app/campaigns">Campaigns</a>
-        </ui-nav-menu>
+      <PolarisAppProvider i18n={enTranslations} linkComponent={Link}>
+        <NavMenu>
+          <Link to="/app" rel="home">Home</Link>
+          <Link to="/app/campaigns">Campaigns</Link>
+        </NavMenu>
         <Outlet />
       </PolarisAppProvider>
     </ShopifyAppProvider>
