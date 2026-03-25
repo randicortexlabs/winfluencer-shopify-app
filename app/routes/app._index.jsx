@@ -1,4 +1,4 @@
-import { Link, useLoaderData } from "react-router";
+import { Link, useLoaderData, useNavigate } from "react-router";
 import {
   Badge,
   BlockStack,
@@ -111,6 +111,7 @@ export const loader = async ({ request }) => {
 
 export default function Index() {
   const { store, isNewInstall, stats } = useLoaderData();
+  const navigate = useNavigate();
   const totalRevenue = Number(stats.totalRevenue ?? 0);
   const orders = Number(stats.orderCount ?? 0);
 
@@ -127,7 +128,7 @@ export default function Index() {
     <Page
       title="Winfluencer"
       subtitle={store.shop}
-      primaryAction={{ content: "New Campaign", url: "/app/campaigns/new" }}
+      primaryAction={{ content: "New Campaign", onAction: () => navigate("/app/campaigns/new") }}
     >
       <ui-title-bar title="Winfluencer" />
       <Layout>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Form, redirect, useActionData, useLoaderData } from "react-router";
+import { Form, redirect, useActionData, useLoaderData, useNavigate } from "react-router";
 import {
   Banner,
   BlockStack,
@@ -108,6 +108,7 @@ export const action = async ({ request }) => {
 export default function NewCampaignPage() {
   const { store } = useLoaderData();
   const actionData = useActionData();
+  const navigate = useNavigate();
 
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -128,7 +129,7 @@ export default function NewCampaignPage() {
   return (
     <Page
       title="New Campaign"
-      backAction={{ content: "Campaigns", url: "/app/campaigns" }}
+      backAction={{ content: "Campaigns", onAction: () => navigate("/app/campaigns") }}
     >
       <ui-title-bar title="New Campaign" />
       <Card>

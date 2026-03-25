@@ -13,12 +13,20 @@ export const loader = async ({ request }) => {
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
+function AppLink({ url, children, ...rest }) {
+  return (
+    <Link to={url} {...rest}>
+      {children}
+    </Link>
+  );
+}
+
 export default function App() {
   const { apiKey } = useLoaderData();
 
   return (
     <ShopifyAppProvider embedded apiKey={apiKey}>
-      <PolarisAppProvider i18n={enTranslations} linkComponent={Link}>
+      <PolarisAppProvider i18n={enTranslations} linkComponent={AppLink}>
         <NavMenu>
           <Link to="/app" rel="home">Home</Link>
           <Link to="/app/campaigns">Campaigns</Link>

@@ -1,4 +1,4 @@
-import { Link, useLoaderData } from "react-router";
+import { Link, useLoaderData, useNavigate } from "react-router";
 import {
   Badge,
   Button,
@@ -53,11 +53,12 @@ export const loader = async ({ request }) => {
 
 export default function CampaignsListPage() {
   const { campaigns } = useLoaderData();
+  const navigate = useNavigate();
 
   return (
     <Page
       title="Campaigns"
-      primaryAction={{ content: "New Campaign", url: "/app/campaigns/new" }}
+      primaryAction={{ content: "New Campaign", onAction: () => navigate("/app/campaigns/new") }}
     >
       <ui-title-bar title="Campaigns" />
       <Layout>
@@ -73,7 +74,7 @@ export default function CampaignsListPage() {
                   tracking attribution.
                 </Text>
                 <div style={{ marginTop: "12px" }}>
-                  <Button url="/app/campaigns/new">Create campaign</Button>
+                  <Button onClick={() => navigate("/app/campaigns/new")}>Create campaign</Button>
                 </div>
               </EmptyState>
             ) : (
