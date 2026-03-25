@@ -1,6 +1,7 @@
 import { Link, useLoaderData } from "react-router";
 import {
   Badge,
+  Button,
   Card,
   EmptyState,
   IndexTable,
@@ -54,12 +55,11 @@ export default function CampaignsListPage() {
   const { campaigns } = useLoaderData();
 
   return (
-    <Page title="Campaigns">
-      <ui-title-bar title="Campaigns">
-        <Link to="/app/campaigns/new">
-          <button variant="primary">New Campaign</button>
-        </Link>
-      </ui-title-bar>
+    <Page
+      title="Campaigns"
+      primaryAction={{ content: "New Campaign", url: "/app/campaigns/new" }}
+    >
+      <ui-title-bar title="Campaigns" />
       <Layout>
         <Layout.Section>
           <Card>
@@ -69,12 +69,11 @@ export default function CampaignsListPage() {
                 image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
               >
                 <Text as="p" tone="subdued">
-                  Create your first campaign to start assigning influencers and tracking attribution.
+                  Create your first campaign to start assigning influencers and
+                  tracking attribution.
                 </Text>
                 <div style={{ marginTop: "12px" }}>
-                  <Link to="/app/campaigns/new">
-                    <button>Create campaign</button>
-                  </Link>
+                  <Button url="/app/campaigns/new">Create campaign</Button>
                 </div>
               </EmptyState>
             ) : (
@@ -91,18 +90,30 @@ export default function CampaignsListPage() {
                 ]}
               >
                 {campaigns.map((campaign, index) => (
-                  <IndexTable.Row id={campaign.id} key={campaign.id} position={index}>
+                  <IndexTable.Row
+                    id={campaign.id}
+                    key={campaign.id}
+                    position={index}
+                  >
                     <IndexTable.Cell>
                       <Link to={`/app/campaigns/${campaign.id}`}>
-                        <Text as="span" fontWeight="semibold">{campaign.name}</Text>
+                        <Text as="span" fontWeight="semibold">
+                          {campaign.name}
+                        </Text>
                       </Link>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Badge tone={statusTone(campaign.status)}>{campaign.status}</Badge>
+                      <Badge tone={statusTone(campaign.status)}>
+                        {campaign.status}
+                      </Badge>
                     </IndexTable.Cell>
-                    <IndexTable.Cell>{campaign._count.influencers}</IndexTable.Cell>
+                    <IndexTable.Cell>
+                      {campaign._count.influencers}
+                    </IndexTable.Cell>
                     <IndexTable.Cell>{campaign._count.orders}</IndexTable.Cell>
-                    <IndexTable.Cell>{formatDate(campaign.startDate)}</IndexTable.Cell>
+                    <IndexTable.Cell>
+                      {formatDate(campaign.startDate)}
+                    </IndexTable.Cell>
                   </IndexTable.Row>
                 ))}
               </IndexTable>

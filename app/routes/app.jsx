@@ -33,6 +33,10 @@ export function ErrorBoundary() {
   return boundary.error(useRouteError());
 }
 
+// Prevent the parent layout loader from re-running on child navigations.
+// The apiKey is static — no need to re-authenticate the layout on every click.
+export const shouldRevalidate = () => false;
+
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
 };

@@ -1,8 +1,17 @@
 import { useMemo, useState } from "react";
-import { Form, Link, redirect, useActionData, useLoaderData } from "react-router";
+import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import {
-  Banner, BlockStack, Button, Card, Divider,
-  FormLayout, InlineStack, Page, Select, Text, TextField,
+  Banner,
+  BlockStack,
+  Button,
+  Card,
+  Divider,
+  FormLayout,
+  InlineStack,
+  Page,
+  Select,
+  Text,
+  TextField,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -55,7 +64,9 @@ export const action = async ({ request }) => {
   try {
     const parsed = JSON.parse(influencersRaw);
     if (Array.isArray(parsed)) influencers = parsed;
-  } catch { influencers = []; }
+  } catch {
+    influencers = [];
+  }
 
   const targetUrl = storeUrlInput || `https://${store.shop}`;
 
@@ -104,29 +115,54 @@ export default function NewCampaignPage() {
   const [storeUrl, setStoreUrl] = useState(`https://${store.shop}`);
   const [influencers, setInfluencers] = useState([createRow()]);
 
-  const influencersPayload = useMemo(() => JSON.stringify(influencers), [influencers]);
+  const influencersPayload = useMemo(
+    () => JSON.stringify(influencers),
+    [influencers],
+  );
 
   const update = (index, field, value) =>
     setInfluencers((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
     );
 
   return (
-    <Page title="New Campaign">
-      <ui-title-bar title="New Campaign">
-        <Link to="/app/campaigns">
-          <button variant="breadcrumb">Campaigns</button>
-        </Link>
-      </ui-title-bar>
+    <Page
+      title="New Campaign"
+      backAction={{ content: "Campaigns", url: "/app/campaigns" }}
+    >
+      <ui-title-bar title="New Campaign" />
       <Card>
         <Form method="post">
           <BlockStack gap="400">
-            {actionData?.error && <Banner tone="critical" title={actionData.error} />}
+            {actionData?.error && (
+              <Banner tone="critical" title={actionData.error} />
+            )}
             <FormLayout>
-              <TextField label="Campaign name" name="name" value={name} onChange={setName} autoComplete="off" requiredIndicator />
+              <TextField
+                label="Campaign name"
+                name="name"
+                value={name}
+                onChange={setName}
+                autoComplete="off"
+                requiredIndicator
+              />
               <InlineStack gap="300" align="start">
-                <TextField type="date" label="Start date" name="startDate" value={startDate} onChange={setStartDate} autoComplete="off" />
-                <TextField type="date" label="End date" name="endDate" value={endDate} onChange={setEndDate} autoComplete="off" />
+                <TextField
+                  type="date"
+                  label="Start date"
+                  name="startDate"
+                  value={startDate}
+                  onChange={setStartDate}
+                  autoComplete="off"
+                />
+                <TextField
+                  type="date"
+                  label="End date"
+                  name="endDate"
+                  value={endDate}
+                  onChange={setEndDate}
+                  autoComplete="off"
+                />
               </InlineStack>
               <TextField
                 label="Store URL for tracking"
@@ -139,21 +175,52 @@ export default function NewCampaignPage() {
               />
             </FormLayout>
             <Divider />
-            <Text as="h2" variant="headingSm">Add influencers</Text>
+            <Text as="h2" variant="headingSm">
+              Add influencers
+            </Text>
             {influencers.map((inf, index) => (
               <Card key={index}>
                 <BlockStack gap="300">
                   <FormLayout>
-                    <TextField label="Influencer name" value={inf.name} onChange={(v) => update(index, "name", v)} autoComplete="off" />
-                    <TextField label="Handle/username" value={inf.handle} onChange={(v) => update(index, "handle", v)} autoComplete="off" prefix="@" />
-                    <Select label="Platform" options={PLATFORM_OPTIONS} value={inf.platform} onChange={(v) => update(index, "platform", v)} />
+                    <TextField
+                      label="Influencer name"
+                      value={inf.name}
+                      onChange={(v) => update(index, "name", v)}
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label="Handle/username"
+                      value={inf.handle}
+                      onChange={(v) => update(index, "handle", v)}
+                      autoComplete="off"
+                      prefix="@"
+                    />
+                    <Select
+                      label="Platform"
+                      options={PLATFORM_OPTIONS}
+                      value={inf.platform}
+                      onChange={(v) => update(index, "platform", v)}
+                    />
                   </FormLayout>
                   <InlineStack align="space-between">
-                    <Button variant="plain" onClick={() => setInfluencers((p) => [...p, createRow()])}>
+                    <Button
+                      variant="plain"
+                      onClick={() =>
+                        setInfluencers((p) => [...p, createRow()])
+                      }
+                    >
                       Add another influencer
                     </Button>
                     {index > 0 && (
-                      <Button tone="critical" variant="plain" onClick={() => setInfluencers((p) => p.filter((_, i) => i !== index))}>
+                      <Button
+                        tone="critical"
+                        variant="plain"
+                        onClick={() =>
+                          setInfluencers((p) =>
+                            p.filter((_, i) => i !== index),
+                          )
+                        }
+                      >
                         Remove
                       </Button>
                     )}
@@ -161,9 +228,15 @@ export default function NewCampaignPage() {
                 </BlockStack>
               </Card>
             ))}
-            <input type="hidden" name="influencers" value={influencersPayload} />
+            <input
+              type="hidden"
+              name="influencers"
+              value={influencersPayload}
+            />
             <InlineStack align="end">
-              <Button submit variant="primary">Create campaign</Button>
+              <Button submit variant="primary">
+                Create campaign
+              </Button>
             </InlineStack>
           </BlockStack>
         </Form>

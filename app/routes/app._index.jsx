@@ -124,12 +124,12 @@ export default function Index() {
   const maxFunnel = Math.max(...funnel.map((s) => s.value), 1);
 
   return (
-    <Page title="Winfluencer" subtitle={store.shop}>
-      <ui-title-bar title="Winfluencer">
-        <Link to="/app/campaigns/new">
-          <button variant="primary">New Campaign</button>
-        </Link>
-      </ui-title-bar>
+    <Page
+      title="Winfluencer"
+      subtitle={store.shop}
+      primaryAction={{ content: "New Campaign", url: "/app/campaigns/new" }}
+    >
+      <ui-title-bar title="Winfluencer" />
       <Layout>
         {isNewInstall ? (
           <Layout.Section>

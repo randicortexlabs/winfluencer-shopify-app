@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"C:\\\\Users\\\\randu\\\\OneDrive\\\\Desktop\\\\winfluencers_com_main\\\\winfluencer-shopifyapp-core\\\\winfluencer-app\\\\app\\\\routes\\\\app.campaigns\"*)"
+    ]
+  }
+}
