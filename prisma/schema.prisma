@@ -37,6 +37,7 @@ model Store {
   campaigns   Campaign[]
   events      Event[]
   orders      Order[]
+  teamMembers TeamMember[]
 }
 
 model Campaign {
@@ -47,6 +48,7 @@ model Campaign {
   status      String   @default("active")
   startDate   DateTime?
   endDate     DateTime?
+  budget      Float?
   createdAt   DateTime @default(now())
   influencers Influencer[]
 }
@@ -83,6 +85,9 @@ model Event {
   quantity       Int?
   pageUrl        String?
   timestamp      DateTime @default(now())
+
+  @@index([storeId, eventType])
+  @@index([influencerId, eventType])
 }
 
 model Order {
@@ -97,4 +102,20 @@ model Order {
   currency       String   @default("USD")
   lineItems      Json
   createdAt      DateTime @default(now())
+
+  @@index([storeId])
+  @@index([influencerId])
+}
+
+model TeamMember {
+  id         String   @id @default(cuid())
+  storeId    String
+  store      Store    @relation(fields: [storeId], references: [id])
+  email      String
+  name       String
+  role       String   @default("viewer")
+  invitedAt  DateTime @default(now())
+  acceptedAt DateTime?
+
+  @@unique([storeId, email])
 }

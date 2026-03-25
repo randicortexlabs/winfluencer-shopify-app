@@ -28,8 +28,10 @@ export default function App() {
     <ShopifyAppProvider embedded apiKey={apiKey}>
       <PolarisAppProvider i18n={enTranslations} linkComponent={AppLink}>
         <NavMenu>
-          <Link to="/app" rel="home">Home</Link>
+          <Link to="/app" rel="home">Dashboard</Link>
           <Link to="/app/campaigns">Campaigns</Link>
+          <Link to="/app/products">Products</Link>
+          <Link to="/app/settings">Settings</Link>
         </NavMenu>
         <Outlet />
       </PolarisAppProvider>

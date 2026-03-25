@@ -1,17 +1,20 @@
-import { Link, useLoaderData, useNavigate } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import {
   Badge,
+  BlockStack,
   Button,
   Card,
   EmptyState,
-  IndexTable,
+  InlineStack,
   Layout,
   Page,
+  ProgressBar,
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { getEnrichedCampaigns } from "../services/analytics.server";
 
 function statusTone(status) {
   const value = String(status || "").toLowerCase();
@@ -25,7 +28,11 @@ function formatDate(value) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-US");
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatCurrency(val) {
+  return `$${Number(val || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
 export const loader = async ({ request }) => {
@@ -33,38 +40,27 @@ export const loader = async ({ request }) => {
   const store = await db.store.findUnique({ where: { shop: session.shop } });
   if (!store) throw new Response("Store not found", { status: 404 });
 
-  const baseCampaigns = await db.campaign.findMany({
-    where: { storeId: store.id },
-    include: { _count: { select: { influencers: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const campaigns = await getEnrichedCampaigns(store.id);
+  const totalInfluencers = campaigns.reduce((sum, c) => sum + c.influencerCount, 0);
 
-  const campaigns = await Promise.all(
-    baseCampaigns.map(async (campaign) => {
-      const ordersCount = await db.order.count({
-        where: { influencer: { campaignId: campaign.id } },
-      });
-      return { ...campaign, _count: { ...campaign._count, orders: ordersCount } };
-    }),
-  );
-
-  return { campaigns, store };
+  return { campaigns, totalInfluencers };
 };
 
 export default function CampaignsListPage() {
-  const { campaigns } = useLoaderData();
+  const { campaigns, totalInfluencers } = useLoaderData();
   const navigate = useNavigate();
 
   return (
     <Page
       title="Campaigns"
+      subtitle={`${campaigns.length} campaign${campaigns.length !== 1 ? "s" : ""} \u00B7 ${totalInfluencers} active influencers`}
       primaryAction={{ content: "New Campaign", onAction: () => navigate("/app/campaigns/new") }}
     >
       <ui-title-bar title="Campaigns" />
       <Layout>
         <Layout.Section>
-          <Card>
-            {campaigns.length === 0 ? (
+          {campaigns.length === 0 ? (
+            <Card>
               <EmptyState
                 heading="No campaigns yet"
                 image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
@@ -74,52 +70,85 @@ export default function CampaignsListPage() {
                   tracking attribution.
                 </Text>
                 <div style={{ marginTop: "12px" }}>
-                  <Button onClick={() => navigate("/app/campaigns/new")}>Create campaign</Button>
+                  <Button onClick={() => navigate("/app/campaigns/new")}>
+                    Create campaign
+                  </Button>
                 </div>
               </EmptyState>
-            ) : (
-              <IndexTable
-                resourceName={{ singular: "campaign", plural: "campaigns" }}
-                itemCount={campaigns.length}
-                selectable={false}
-                headings={[
-                  { title: "Name" },
-                  { title: "Status" },
-                  { title: "Influencers" },
-                  { title: "Orders" },
-                  { title: "Start date" },
-                ]}
-              >
-                {campaigns.map((campaign, index) => (
-                  <IndexTable.Row
-                    id={campaign.id}
+            </Card>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+              {campaigns.map((campaign) => {
+                const budgetPct = campaign.budget && campaign.budget > 0
+                  ? Math.min(Math.round((campaign.revenue / campaign.budget) * 100), 100)
+                  : null;
+
+                return (
+                  <div
                     key={campaign.id}
-                    position={index}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => navigate(`/app/campaigns/${campaign.id}`)}
                   >
-                    <IndexTable.Cell>
-                      <Link to={`/app/campaigns/${campaign.id}`}>
-                        <Text as="span" fontWeight="semibold">
-                          {campaign.name}
+                    <Card>
+                      <BlockStack gap="300">
+                        {/* Header */}
+                        <InlineStack align="space-between" blockAlign="start">
+                          <Text variant="headingSm" as="h3" fontWeight="bold">
+                            {campaign.name}
+                          </Text>
+                          <Badge tone={statusTone(campaign.status)}>
+                            {campaign.status}
+                          </Badge>
+                        </InlineStack>
+                        <Text as="p" tone="subdued" variant="bodySm">
+                          {formatDate(campaign.startDate)}
+                          {campaign.endDate ? ` \u2013 ${formatDate(campaign.endDate)}` : ""}
+                          {` \u00B7 ${campaign.influencerCount} influencer${campaign.influencerCount !== 1 ? "s" : ""}`}
                         </Text>
-                      </Link>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <Badge tone={statusTone(campaign.status)}>
-                        {campaign.status}
-                      </Badge>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>
-                      {campaign._count.influencers}
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>{campaign._count.orders}</IndexTable.Cell>
-                    <IndexTable.Cell>
-                      {formatDate(campaign.startDate)}
-                    </IndexTable.Cell>
-                  </IndexTable.Row>
-                ))}
-              </IndexTable>
-            )}
-          </Card>
+
+                        {/* Metrics grid */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                          <BlockStack gap="050">
+                            <Text as="p" tone="subdued" variant="bodySm">Revenue</Text>
+                            <Text as="p" fontWeight="semibold">{formatCurrency(campaign.revenue)}</Text>
+                          </BlockStack>
+                          <BlockStack gap="050">
+                            <Text as="p" tone="subdued" variant="bodySm">Conv. rate</Text>
+                            <Text as="p" fontWeight="semibold" tone={campaign.convRate > 5 ? "success" : undefined}>
+                              {campaign.convRate}%
+                            </Text>
+                          </BlockStack>
+                          <BlockStack gap="050">
+                            <Text as="p" tone="subdued" variant="bodySm">Visitors</Text>
+                            <Text as="p" fontWeight="semibold">{campaign.visitors.toLocaleString()}</Text>
+                          </BlockStack>
+                          <BlockStack gap="050">
+                            <Text as="p" tone="subdued" variant="bodySm">Purchases</Text>
+                            <Text as="p" fontWeight="semibold">{campaign.purchases}</Text>
+                          </BlockStack>
+                        </div>
+
+                        {/* Budget utilisation */}
+                        {budgetPct !== null && (
+                          <BlockStack gap="100">
+                            <InlineStack align="space-between">
+                              <Text as="p" tone="subdued" variant="bodySm">Budget utilisation</Text>
+                              <Text as="p" variant="bodySm" fontWeight="semibold">{budgetPct}%</Text>
+                            </InlineStack>
+                            <ProgressBar
+                              progress={budgetPct}
+                              tone={budgetPct >= 100 ? "success" : "primary"}
+                              size="small"
+                            />
+                          </BlockStack>
+                        )}
+                      </BlockStack>
+                    </Card>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Layout.Section>
       </Layout>
     </Page>

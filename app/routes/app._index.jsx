@@ -18,25 +18,12 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { injectSnippetIntoTheme } from "../services/tracking.server";
 import { installCustomPixel } from "../services/pixel.server";
-
-async function loadStats(storeId) {
-  const [campaignCount, influencerCount, orderCount, revenueAgg] =
-    await Promise.all([
-      db.campaign.count({ where: { storeId } }),
-      db.influencer.count({ where: { campaign: { storeId } } }),
-      db.order.count({ where: { storeId } }),
-      db.order.aggregate({
-        where: { storeId },
-        _sum: { totalPrice: true },
-      }),
-    ]);
-  return {
-    campaignCount,
-    influencerCount,
-    orderCount,
-    totalRevenue: revenueAgg._sum.totalPrice ?? 0,
-  };
-}
+import {
+  getStoreOverviewMetrics,
+  getTopInfluencers,
+  getInfluencerComparison,
+  getTopProduct,
+} from "../services/analytics.server";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -47,7 +34,6 @@ export const loader = async ({ request }) => {
   let isNewInstall = false;
 
   if (!store) {
-    // eslint-disable-next-line no-undef
     const pixelId = globalThis.crypto.randomUUID();
     try {
       store = await db.store.create({
@@ -76,7 +62,6 @@ export const loader = async ({ request }) => {
     } catch (e) {
       console.log("[Winfluencer] installCustomPixel failure", e);
     }
-    // eslint-disable-next-line no-undef
     const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     try {
       const webhookRes = await fetch(
@@ -105,34 +90,65 @@ export const loader = async ({ request }) => {
   }
 
   if (!store) throw new Response("Store not available", { status: 500 });
-  const stats = await loadStats(store.id);
-  return { store, isNewInstall, stats };
+
+  const [metrics, topInfluencers, allInfluencers, topProduct] = await Promise.all([
+    getStoreOverviewMetrics(store.id),
+    getTopInfluencers(store.id, 5),
+    getInfluencerComparison(store.id),
+    getTopProduct(store.id),
+  ]);
+
+  return { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct };
 };
 
-export default function Index() {
-  const { store, isNewInstall, stats } = useLoaderData();
-  const navigate = useNavigate();
-  const totalRevenue = Number(stats.totalRevenue ?? 0);
-  const orders = Number(stats.orderCount ?? 0);
+function formatCurrency(val) {
+  return `$${Number(val || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
-  const funnel = [
-    { label: "Visitors",      value: orders * 12 || 0, tone: "highlight" },
-    { label: "Product views", value: orders * 8  || 0, tone: "highlight" },
-    { label: "Add to cart",   value: orders * 4  || 0, tone: "primary"   },
-    { label: "Checkout",      value: orders * 2  || 0, tone: "primary"   },
-    { label: "Purchased",     value: orders,           tone: "success"   },
+function platformTone(platform) {
+  const p = (platform || "").toLowerCase();
+  if (p === "tiktok") return "attention";
+  if (p === "instagram") return "info";
+  if (p === "youtube") return "critical";
+  return "new";
+}
+
+export default function DashboardPage() {
+  const { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct } = useLoaderData();
+  const navigate = useNavigate();
+  const { funnel } = metrics;
+
+  const funnelStages = [
+    { label: "Visitors", value: funnel.visitors, tone: "highlight" },
+    { label: "Product views", value: funnel.productViews, tone: "highlight" },
+    { label: "Add to cart", value: funnel.addToCart, tone: "primary" },
+    { label: "Checkout", value: funnel.checkoutStarted, tone: "primary" },
+    { label: "Purchased", value: funnel.purchased, tone: "success" },
   ];
-  const maxFunnel = Math.max(...funnel.map((s) => s.value), 1);
+  const maxFunnel = Math.max(...funnelStages.map((s) => s.value), 1);
+  const totalVisitors = funnel.visitors || 0;
+
+  const comparisonRows = allInfluencers.map((inf) => [
+    inf.name,
+    inf.platform,
+    String(inf.visitors),
+    String(inf.addToCart),
+    String(inf.purchases),
+    `${inf.convRate}%`,
+    formatCurrency(inf.revenue),
+    formatCurrency(inf.aov),
+    inf.purchases > 0 ? "Active" : "Inactive",
+  ]);
 
   return (
     <Page
-      title="Winfluencer"
+      title="Dashboard"
       subtitle={store.shop}
       primaryAction={{ content: "New Campaign", onAction: () => navigate("/app/campaigns/new") }}
     >
       <ui-title-bar title="Winfluencer" />
       <Layout>
-        {isNewInstall ? (
+        {isNewInstall && (
           <Layout.Section>
             <Card>
               <InlineStack align="space-between" blockAlign="center">
@@ -147,37 +163,84 @@ export default function Index() {
               </div>
             </Card>
           </Layout.Section>
-        ) : null}
+        )}
 
+        {/* Metric cards */}
         <Layout.Section>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
-            <Card><BlockStack gap="150"><Text as="p" tone="subdued">Total Revenue</Text><Text variant="headingLg" as="p">${totalRevenue.toFixed(2)}</Text></BlockStack></Card>
-            <Card><BlockStack gap="150"><Text as="p" tone="subdued">Active Influencers</Text><Text variant="headingLg" as="p">{stats.influencerCount}</Text></BlockStack></Card>
-            <Card><BlockStack gap="150"><Text as="p" tone="subdued">Avg Conversion</Text><Text variant="headingLg" as="p">—</Text></BlockStack></Card>
-            <Card><BlockStack gap="150"><Text as="p" tone="subdued">Orders</Text><Text variant="headingLg" as="p">{stats.orderCount}</Text></BlockStack></Card>
+            <Card>
+              <BlockStack gap="150">
+                <Text as="p" tone="subdued">Total Revenue</Text>
+                <Text variant="headingLg" as="p">{formatCurrency(metrics.totalRevenue)}</Text>
+              </BlockStack>
+            </Card>
+            <Card>
+              <BlockStack gap="150">
+                <Text as="p" tone="subdued">Active Influencers</Text>
+                <Text variant="headingLg" as="p">{metrics.influencerCount}</Text>
+              </BlockStack>
+            </Card>
+            <Card>
+              <BlockStack gap="150">
+                <Text as="p" tone="subdued">Avg Conversion</Text>
+                <Text variant="headingLg" as="p">
+                  {metrics.avgConversion ? `${metrics.avgConversion}%` : "—"}
+                </Text>
+              </BlockStack>
+            </Card>
+            <Card>
+              <BlockStack gap="150">
+                <Text as="p" tone="subdued">Top Product</Text>
+                <Text variant="headingMd" as="p">
+                  {topProduct ? topProduct.title : "—"}
+                </Text>
+                {topProduct && (
+                  <Text as="p" tone="subdued">
+                    {topProduct.units} units &middot; {formatCurrency(topProduct.revenue)}
+                  </Text>
+                )}
+              </BlockStack>
+            </Card>
           </div>
         </Layout.Section>
 
+        {/* Funnel + Top influencers */}
         <Layout.Section>
           <Layout>
             <Layout.Section>
               <Card>
                 <BlockStack gap="300">
-                  <BlockStack gap="100">
-                    <Text variant="headingSm" as="h2">Conversion funnel</Text>
-                    <Text as="p" tone="subdued">All campaigns</Text>
-                  </BlockStack>
+                  <InlineStack align="space-between" blockAlign="center">
+                    <BlockStack gap="100">
+                      <Text variant="headingSm" as="h2">Conversion funnel</Text>
+                      <Text as="p" tone="subdued">
+                        {totalVisitors.toLocaleString()} total visitors
+                      </Text>
+                    </BlockStack>
+                    <Badge tone="success">Live</Badge>
+                  </InlineStack>
                   <Divider />
                   <BlockStack gap="300">
-                    {funnel.map((stage) => (
-                      <BlockStack gap="100" key={stage.label}>
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text as="p">{stage.label}</Text>
-                          <Text as="p" tone="subdued">{stage.value}</Text>
-                        </InlineStack>
-                        <ProgressBar progress={Math.round((stage.value / maxFunnel) * 100)} tone={stage.tone} />
-                      </BlockStack>
-                    ))}
+                    {funnelStages.map((stage, i) => {
+                      const pct = totalVisitors > 0
+                        ? ((stage.value / totalVisitors) * 100).toFixed(0)
+                        : "0";
+                      return (
+                        <BlockStack gap="100" key={stage.label}>
+                          <InlineStack align="space-between" blockAlign="center">
+                            <Text as="p">{stage.label}</Text>
+                            <InlineStack gap="200">
+                              <Text as="p" fontWeight="semibold">{stage.value.toLocaleString()}</Text>
+                              <Text as="p" tone="subdued">{pct}%</Text>
+                            </InlineStack>
+                          </InlineStack>
+                          <ProgressBar
+                            progress={Math.round((stage.value / maxFunnel) * 100)}
+                            tone={stage.tone}
+                          />
+                        </BlockStack>
+                      );
+                    })}
                   </BlockStack>
                 </BlockStack>
               </Card>
@@ -187,13 +250,33 @@ export default function Index() {
                 <BlockStack gap="300">
                   <Text variant="headingSm" as="h2">Top influencers</Text>
                   <Divider />
-                  {stats.influencerCount === 0 ? (
+                  {topInfluencers.length === 0 ? (
                     <Text as="p" tone="subdued">No influencers yet</Text>
                   ) : (
-                    <InlineStack align="space-between" blockAlign="center">
-                      <Text as="p">Active influencers</Text>
-                      <Badge tone="info">{stats.influencerCount}</Badge>
-                    </InlineStack>
+                    <BlockStack gap="300">
+                      {topInfluencers.map((inf) => (
+                        <div
+                          key={inf.id}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => navigate(`/app/campaigns/${inf.campaignId}/influencers/${inf.id}`)}
+                        >
+                          <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                            <BlockStack gap="050">
+                              <Text as="p" fontWeight="semibold">{inf.name}</Text>
+                              <Text as="p" tone="subdued" variant="bodySm">@{inf.handle}</Text>
+                            </BlockStack>
+                            <BlockStack gap="050">
+                              <Text as="p" fontWeight="semibold" alignment="end">
+                                {formatCurrency(inf.revenue)}
+                              </Text>
+                              <Text as="p" tone="subdued" variant="bodySm" alignment="end">
+                                {inf.convRate}% conv.
+                              </Text>
+                            </BlockStack>
+                          </InlineStack>
+                        </div>
+                      ))}
+                    </BlockStack>
                   )}
                 </BlockStack>
               </Card>
@@ -201,23 +284,24 @@ export default function Index() {
           </Layout>
         </Layout.Section>
 
+        {/* Influencer comparison table */}
         <Layout.Section>
           <Card>
             <BlockStack gap="300">
               <InlineStack align="space-between" blockAlign="center">
-                <Text variant="headingSm" as="h2">Campaigns</Text>
-                <Link to="/app/campaigns">
-                  <Button variant="plain">View all</Button>
-                </Link>
+                <BlockStack gap="100">
+                  <Text variant="headingSm" as="h2">Influencer comparison</Text>
+                  <Text as="p" tone="subdued">Click any row for full analytics</Text>
+                </BlockStack>
               </InlineStack>
               <Divider />
-              {stats.campaignCount === 0 ? (
+              {comparisonRows.length === 0 ? (
                 <EmptyState
                   heading="Create your first campaign"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
                   <Text as="p" tone="subdued">
-                    Launch your first campaign to start tracking influencer performance and attribution.
+                    Launch your first campaign to start tracking influencer performance.
                   </Text>
                   <div style={{ marginTop: "12px" }}>
                     <Link to="/app/campaigns/new">
@@ -227,14 +311,15 @@ export default function Index() {
                 </EmptyState>
               ) : (
                 <DataTable
-                  columnContentTypes={["text", "numeric", "numeric", "numeric"]}
-                  headings={["Campaign", "Influencers", "Orders", "Attributed revenue"]}
-                  rows={[[
-                    `All campaigns (${stats.campaignCount})`,
-                    String(stats.influencerCount),
-                    String(stats.orderCount),
-                    `$${totalRevenue.toFixed(2)}`,
-                  ]]}
+                  columnContentTypes={[
+                    "text", "text", "numeric", "numeric", "numeric",
+                    "numeric", "numeric", "numeric", "text",
+                  ]}
+                  headings={[
+                    "Influencer", "Platform", "Visitors", "Add to cart",
+                    "Purchases", "Conv. rate", "Revenue", "AOV", "Status",
+                  ]}
+                  rows={comparisonRows}
                 />
               )}
             </BlockStack>

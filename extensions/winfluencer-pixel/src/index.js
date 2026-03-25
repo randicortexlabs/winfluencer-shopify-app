@@ -53,6 +53,20 @@ register(({ analytics, settings }) => {
     }).catch(() => {});
   }
 
+  analytics.subscribe("product_viewed", (event) => {
+    const pv = event.data?.productVariant;
+    postEvent({
+      event_type: "product_viewed",
+      product_id: pv?.product?.id != null ? String(pv.product.id) : null,
+      product_title: pv?.product?.title ?? null,
+      variant_id: pv?.id != null ? String(pv.id) : null,
+      variant_title: pv?.title ?? null,
+      price: pv?.price?.amount != null ? Number(pv.price.amount) : null,
+      quantity: null,
+      page_url: pageHref(),
+    });
+  });
+
   analytics.subscribe("product_added_to_cart", (event) => {
     const cartLine = event.data?.cartLine;
     const m = cartLine?.merchandise;
