@@ -14,18 +14,19 @@ import {
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
-import db from "../db.server";
-import { injectSnippetIntoTheme } from "../services/tracking.server";
-import { installCustomPixel } from "../services/pixel.server";
-import {
-  getStoreOverviewMetrics,
-  getTopInfluencers,
-  getInfluencerComparison,
-  getTopProduct,
-} from "../services/analytics.server";
 
 export const loader = async ({ request }) => {
+  const { authenticate } = await import("../shopify.server");
+  const { default: db } = await import("../db.server");
+  const { injectSnippetIntoTheme } = await import("../services/tracking.server");
+  const { installCustomPixel } = await import("../services/pixel.server");
+  const {
+    getStoreOverviewMetrics,
+    getTopInfluencers,
+    getInfluencerComparison,
+    getTopProduct,
+  } = await import("../services/analytics.server");
+
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
   const accessToken = session.accessToken;

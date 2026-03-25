@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls \"C:\\\\Users\\\\randu\\\\OneDrive\\\\Desktop\\\\winfluencers_com_main\\\\winfluencer-shopifyapp-core\\\\winfluencer-app\\\\app\\\\routes\\\\app.campaigns\"*)"
+      "Bash(ls \"C:\\\\Users\\\\randu\\\\OneDrive\\\\Desktop\\\\winfluencers_com_main\\\\winfluencer-shopifyapp-core\\\\winfluencer-app\\\\app\\\\routes\\\\app.campaigns\"*)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\\\\|placeholder\\\\|wip\\\\|WIP\" C:UsersranduOneDriveDesktopwinfluencers_com_mainwinfluencer-shopifyapp-corewinfluencer-app/app --include=*.jsx --include=*.js)",
+      "Bash(grep -E \"$|id\")",
+      "Bash(npx prisma:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

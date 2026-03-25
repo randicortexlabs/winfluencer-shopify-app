@@ -1,8 +1,8 @@
 import { redirect, Form, useLoaderData } from "react-router";
-import { login } from "../../shopify.server";
 import styles from "./styles.module.css";
 
 export const loader = async ({ request }) => {
+  const { login } = await import("../../shopify.server");
   const url = new URL(request.url);
 
   if (url.searchParams.get("shop")) {

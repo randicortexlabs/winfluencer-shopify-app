@@ -12,9 +12,6 @@ import {
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
-import db from "../db.server";
-import { getCampaignStats, getTopInfluencers } from "../services/analytics.server";
 
 function formatCurrency(val) {
   return `$${Number(val || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -36,6 +33,10 @@ function statusTone(status) {
 }
 
 export const loader = async ({ request, params }) => {
+  const { authenticate } = await import("../shopify.server");
+  const { default: db } = await import("../db.server");
+  const { getCampaignStats } = await import("../services/analytics.server");
+
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
   if (!store) throw new Response("Store not found", { status: 404 });

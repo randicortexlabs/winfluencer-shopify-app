@@ -18,8 +18,6 @@ import {
 } from "@shopify/polaris";
 import { CheckCircleIcon } from "@shopify/polaris-icons";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
-import db from "../db.server";
 
 const ROLE_OPTIONS = [
   { label: "Admin", value: "admin" },
@@ -27,6 +25,9 @@ const ROLE_OPTIONS = [
 ];
 
 export const loader = async ({ request }) => {
+  const { authenticate } = await import("../shopify.server");
+  const { default: db } = await import("../db.server");
+
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
   if (!store) throw new Response("Store not found", { status: 404 });
@@ -64,6 +65,9 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
+  const { authenticate } = await import("../shopify.server");
+  const { default: db } = await import("../db.server");
+
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
   if (!store) throw new Response("Store not found", { status: 404 });
