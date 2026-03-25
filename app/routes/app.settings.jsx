@@ -32,19 +32,12 @@ export const loader = async ({ request }) => {
   const store = await db.store.findUnique({ where: { shop: session.shop } });
   if (!store) throw new Response("Store not found", { status: 404 });
 
-  const [recentEvent, eventCount, orderCount, teamMembers] = await Promise.all([
-    db.event.findFirst({
-      where: { storeId: store.id },
-      orderBy: { timestamp: "desc" },
-      select: { timestamp: true },
-    }),
-    db.event.count({ where: { storeId: store.id } }),
-    db.order.count({ where: { storeId: store.id } }),
-    db.teamMember.findMany({
-      where: { storeId: store.id },
-      orderBy: { invitedAt: "asc" },
-    }),
-  ]);
+  const eventCount = await db.event.count({ where: { storeId: store.id } }).catch(() => 0);
+  const orderCount = await db.order.count({ where: { storeId: store.id } }).catch(() => 0);
+  const teamMembers = await db.teamMember.findMany({
+    where: { storeId: store.id },
+    orderBy: { invitedAt: "asc" },
+  }).catch(() => []);
 
   return {
     store: {
@@ -59,8 +52,10 @@ export const loader = async ({ request }) => {
       orderCount,
     },
     teamMembers,
-    ownerEmail: session.email || session.shop,
-    ownerName: [session.firstName, session.lastName].filter(Boolean).join(" ") || "Store Owner",
+    ownerEmail: session?.onlineAccessInfo?.associated_user?.email || session.shop,
+    ownerName: session?.onlineAccessInfo?.associated_user?.first_name
+      ? `${session.onlineAccessInfo.associated_user.first_name} ${session.onlineAccessInfo.associated_user.last_name || ""}`.trim()
+      : "Store Owner",
   };
 };
 
