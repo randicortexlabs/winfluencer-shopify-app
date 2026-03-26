@@ -1,0 +1,64 @@
+{% comment %}
+  Winfluencer App Embed Block
+  Purpose: Capture wf_id from URL → localStorage → cart attributes
+  This is the ONLY storefront-side code. All event tracking is handled
+  by the Custom Pixel via Shopify's Web Pixels API.
+{% endcomment %}
+
+<script>
+(function(){
+  'use strict';
+
+  /* 1. Capture wf_id from URL param */
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var wfFromUrl = params.get('wf_id');
+    if (wfFromUrl) {
+      try { localStorage.setItem('wf_id', wfFromUrl); } catch(e) {}
+    }
+  } catch(e) {}
+
+  /* 2. Get stored wf_id */
+  var wfId = '';
+  try { wfId = localStorage.getItem('wf_id') || ''; } catch(e) {}
+
+  /* 3. Write to cart attributes (bridges wf_id to checkout for the pixel) */
+  if (wfId) {
+    fetch('/cart/update.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attributes: { 'wf_influencer_id': wfId } })
+    }).catch(function(){});
+  }
+
+  /* 4. Re-sync cart attribute after any add-to-cart */
+  try {
+    var origFetch = window.fetch;
+    window.fetch = function() {
+      var url = arguments[0];
+      if (typeof url === 'string' && url.indexOf('/cart/add') !== -1) {
+        var storedWf = '';
+        try { storedWf = localStorage.getItem('wf_id') || ''; } catch(e) {}
+        if (storedWf) {
+          setTimeout(function() {
+            origFetch('/cart/update.js', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ attributes: { 'wf_influencer_id': storedWf } })
+            }).catch(function(){});
+          }, 500);
+        }
+      }
+      return origFetch.apply(this, arguments);
+    };
+  } catch(e) {}
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Winfluencer Tracking",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

@@ -18,8 +18,8 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 export const loader = async ({ request }) => {
   const { authenticate } = await import("../shopify.server");
   const { default: db } = await import("../db.server");
-  const { injectSnippetIntoTheme } = await import("../services/tracking.server");
-  const { installCustomPixel } = await import("../services/pixel.server");
+  // Theme snippet injection removed — using App Embed Block instead
+  // Custom Pixel is managed by shopify app deploy, not programmatically
   const {
     getStoreOverviewMetrics,
     getTopInfluencers,
@@ -50,20 +50,7 @@ export const loader = async ({ request }) => {
     }
   }
 
-  // Always check and inject snippet (re-injects if missing from theme)
   if (store) {
-    try {
-      const injected = await injectSnippetIntoTheme(shop, accessToken, store.pixelId);
-      console.log("[Winfluencer] injectSnippetIntoTheme", injected ? "success" : "already exists or injected");
-    } catch (e) {
-      console.log("[Winfluencer] injectSnippetIntoTheme failure", e);
-    }
-    try {
-      const pixelResult = await installCustomPixel(shop, accessToken, store.pixelId);
-      console.log("[Winfluencer] installCustomPixel", pixelResult.ok ? "success" : "failure");
-    } catch (e) {
-      console.log("[Winfluencer] installCustomPixel failure", e);
-    }
     const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     try {
       const webhookRes = await fetch(

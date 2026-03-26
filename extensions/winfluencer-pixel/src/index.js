@@ -1,27 +1,28 @@
 import { register } from "@shopify/web-pixels-extension";
 
-register(({ analytics, init }) => {
+register(({ analytics, init, browser }) => {
   /**
-   * Winfluencer Custom Pixel — handles CHECKOUT events only.
-   * Pre-checkout events (page_viewed, product_viewed, add_to_cart) are
-   * handled by the theme snippet which has direct access to the storefront.
+   * Winfluencer Custom Pixel
+   * Subscribes to ALL Shopify Customer Events and sends data to our API.
+   * Uses ABSOLUTE URL to avoid sandbox routing issues.
    *
-   * The pixel sandbox cannot reliably reach /apps/winfluencer/events via
-   * relative URLs, so we construct the absolute store URL.
+   * Events tracked:
+   * - page_viewed (every page)
+   * - product_viewed (product pages)
+   * - product_added_to_cart (add to cart)
+   * - cart_viewed (cart page)
+   * - checkout_started
+   * - checkout_completed (purchase)
+   * - collection_viewed
+   * - search_submitted
    */
 
-  // Build absolute endpoint URL from the store's myshopify domain
-  const shopDomain = init?.data?.shop?.myshopifyDomain
-    || init?.data?.shop?.storefrontUrl?.replace("https://", "").replace(/\/$/, "")
-    || "";
-  const ENDPOINT = shopDomain
-    ? `https://${shopDomain}/apps/winfluencer/events`
-    : "/apps/winfluencer/events"; // fallback to relative
+  const ENDPOINT = "https://winfluencer-shopify-app.vercel.app/api/events";
 
-  /* ─── RESOLVE WF_ID ─── */
+  /* ─── RESOLVE WF_ID from cart/checkout attributes ─── */
   let cachedWfId = "";
 
-  // Read from init.data.cart.attributes (cart attribute bridge)
+  // Try init.data.cart.attributes first
   try {
     const cartAttrs = init?.data?.cart?.attributes || [];
     for (const attr of cartAttrs) {
@@ -33,6 +34,7 @@ register(({ analytics, init }) => {
   } catch (e) {}
 
   function resolveWfId(event) {
+    // Return cached if we have it
     if (cachedWfId) return cachedWfId;
 
     // Try checkout attributes
@@ -46,11 +48,28 @@ register(({ analytics, init }) => {
       }
     } catch (e) {}
 
+    // Try cart attributes from the event
+    try {
+      const cartAttrs = event?.data?.cart?.attributes || [];
+      for (const attr of cartAttrs) {
+        if (attr.key === "wf_influencer_id" && attr.value) {
+          cachedWfId = attr.value;
+          return cachedWfId;
+        }
+      }
+    } catch (e) {}
+
     return "";
   }
 
+  /* ─── GET SHOP DOMAIN for store lookup ─── */
+  const shopDomain = init?.data?.shop?.myshopifyDomain || "";
+
   /* ─── SEND EVENT ─── */
   function sendEvent(payload) {
+    // Add shop domain for store lookup (since no app proxy adds ?shop=)
+    payload.shop = shopDomain;
+
     fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -59,43 +78,132 @@ register(({ analytics, init }) => {
     }).catch(() => {});
   }
 
-  /* ─── HELPER: PROCESS CHECKOUT LINE ITEMS ─── */
-  function processCheckoutProducts(items) {
-    const products = [];
-    if (!items) return products;
+  /* ─── HELPER: extract product from productVariant ─── */
+  function extractProduct(pv) {
+    if (!pv) return {};
+    return {
+      product_id: pv.product?.id ? String(pv.product.id) : null,
+      product_title: pv.product?.title || null,
+      product_vendor: pv.product?.vendor || null,
+      product_type: pv.product?.type || null,
+      variant_id: pv.id ? String(pv.id) : null,
+      variant_title: pv.title || null,
+      price: pv.price?.amount ? Number(pv.price.amount) : null,
+      currency: pv.price?.currencyCode || null,
+    };
+  }
 
-    items.forEach((item, index) => {
-      let discount = 0;
-      item.discountAllocations?.forEach((a) => {
-        discount += a?.amount?.amount || 0;
-      });
-
-      const price = item.variant?.price?.amount || 0;
-      const priceAfterDiscount = Math.max(price - discount / (item.quantity || 1), 0);
-
-      products.push({
-        item_id: item.variant?.product?.id || null,
-        item_name: item.variant?.product?.title || null,
-        item_variant: item.variant?.title || null,
-        price: priceAfterDiscount,
-        quantity: item.quantity || 1,
-        index,
-      });
-    });
-    return products;
+  /* ─── HELPER: extract line items from checkout ─── */
+  function extractLineItems(lineItems) {
+    if (!lineItems) return [];
+    return lineItems.map((item) => ({
+      product_id: item.variant?.product?.id ? String(item.variant.product.id) : null,
+      product_title: item.variant?.product?.title || null,
+      variant_id: item.variant?.id ? String(item.variant.id) : null,
+      variant_title: item.variant?.title || null,
+      price: item.variant?.price?.amount ? Number(item.variant.price.amount) : null,
+      quantity: item.quantity || 1,
+    }));
   }
 
   /* ═══════════════════════════════════════════════
-     CHECKOUT EVENTS (pixel-only — has checkout.attributes)
+     ALL SHOPIFY CUSTOMER EVENTS
      ═══════════════════════════════════════════════ */
+
+  /* ─── PAGE VIEWED ─── */
+  analytics.subscribe("page_viewed", (event) => {
+    sendEvent({
+      event_type: "page_viewed",
+      wf_id: resolveWfId(event),
+      page_url: event?.context?.document?.location?.href || "",
+      product_id: null,
+      product_title: null,
+      variant_id: null,
+      variant_title: null,
+      price: null,
+      quantity: null,
+    });
+  });
+
+  /* ─── PRODUCT VIEWED ─── */
+  analytics.subscribe("product_viewed", (event) => {
+    const product = extractProduct(event?.data?.productVariant);
+    sendEvent({
+      event_type: "product_viewed",
+      wf_id: resolveWfId(event),
+      page_url: event?.context?.document?.location?.href || "",
+      ...product,
+      quantity: null,
+    });
+  });
+
+  /* ─── PRODUCT ADDED TO CART ─── */
+  analytics.subscribe("product_added_to_cart", (event) => {
+    const cartLine = event?.data?.cartLine;
+    const product = extractProduct(cartLine?.merchandise);
+    sendEvent({
+      event_type: "product_added_to_cart",
+      wf_id: resolveWfId(event),
+      page_url: event?.context?.document?.location?.href || "",
+      ...product,
+      quantity: cartLine?.quantity || 1,
+    });
+  });
+
+  /* ─── CART VIEWED ─── */
+  analytics.subscribe("cart_viewed", (event) => {
+    const cart = event?.data?.cart;
+    sendEvent({
+      event_type: "cart_viewed",
+      wf_id: resolveWfId(event),
+      page_url: event?.context?.document?.location?.href || "",
+      product_id: null,
+      product_title: null,
+      variant_id: null,
+      variant_title: null,
+      price: cart?.cost?.totalAmount?.amount ? Number(cart.cost.totalAmount.amount) : null,
+      quantity: cart?.lines?.length || null,
+    });
+  });
+
+  /* ─── COLLECTION VIEWED ─── */
+  analytics.subscribe("collection_viewed", (event) => {
+    const collection = event?.data?.collection;
+    sendEvent({
+      event_type: "collection_viewed",
+      wf_id: resolveWfId(event),
+      page_url: event?.context?.document?.location?.href || "",
+      product_id: collection?.id ? String(collection.id) : null,
+      product_title: collection?.title || null,
+      variant_id: null,
+      variant_title: null,
+      price: null,
+      quantity: collection?.productVariants?.length || null,
+    });
+  });
+
+  /* ─── SEARCH SUBMITTED ─── */
+  analytics.subscribe("search_submitted", (event) => {
+    sendEvent({
+      event_type: "search_submitted",
+      wf_id: resolveWfId(event),
+      page_url: event?.context?.document?.location?.href || "",
+      product_id: null,
+      product_title: event?.data?.searchResult?.query || null,
+      variant_id: null,
+      variant_title: null,
+      price: null,
+      quantity: event?.data?.searchResult?.productVariants?.length || null,
+    });
+  });
 
   /* ─── CHECKOUT STARTED ─── */
   analytics.subscribe("checkout_started", (event) => {
     const checkout = event?.data?.checkout;
+    const items = extractLineItems(checkout?.lineItems);
     const totalPrice = checkout?.totalPrice?.amount || 0;
     const shipping = checkout?.shippingLine?.price?.amount || 0;
     const tax = checkout?.totalTax?.amount || 0;
-    const items = processCheckoutProducts(checkout?.lineItems);
 
     sendEvent({
       event_type: "checkout_started",
@@ -105,44 +213,10 @@ register(({ analytics, init }) => {
       product_title: null,
       variant_id: null,
       variant_title: null,
-      price: totalPrice - shipping - tax,
+      price: Number(totalPrice) - Number(shipping) - Number(tax),
       currency: checkout?.currencyCode || null,
       quantity: items.length,
       items,
-    });
-  });
-
-  /* ─── SHIPPING INFO SUBMITTED ─── */
-  analytics.subscribe("checkout_shipping_info_submitted", (event) => {
-    const checkout = event?.data?.checkout;
-    sendEvent({
-      event_type: "shipping_info_submitted",
-      wf_id: resolveWfId(event),
-      page_url: event?.context?.document?.location?.href || "",
-      product_id: null,
-      product_title: null,
-      variant_id: null,
-      variant_title: null,
-      price: checkout?.totalPrice?.amount || null,
-      currency: checkout?.currencyCode || null,
-      quantity: null,
-    });
-  });
-
-  /* ─── PAYMENT INFO SUBMITTED ─── */
-  analytics.subscribe("payment_info_submitted", (event) => {
-    const checkout = event?.data?.checkout;
-    sendEvent({
-      event_type: "payment_info_submitted",
-      wf_id: resolveWfId(event),
-      page_url: event?.context?.document?.location?.href || "",
-      product_id: null,
-      product_title: null,
-      variant_id: null,
-      variant_title: null,
-      price: checkout?.totalPrice?.amount || null,
-      currency: checkout?.currencyCode || null,
-      quantity: null,
     });
   });
 
@@ -150,13 +224,10 @@ register(({ analytics, init }) => {
   analytics.subscribe("checkout_completed", (event) => {
     const checkout = event?.data?.checkout;
     const order = checkout?.order;
+    const items = extractLineItems(checkout?.lineItems);
     const totalPrice = checkout?.totalPrice?.amount || 0;
     const shipping = checkout?.shippingLine?.price?.amount || 0;
     const tax = checkout?.totalTax?.amount || 0;
-    const discount = checkout?.discountsAmount?.amount || 0;
-    const items = processCheckoutProducts(checkout?.lineItems);
-    const coupon = checkout?.discountApplications
-      ?.map((d) => d.title).filter(Boolean).join(",") || null;
 
     sendEvent({
       event_type: "checkout_completed",
@@ -166,16 +237,10 @@ register(({ analytics, init }) => {
       product_title: null,
       variant_id: null,
       variant_title: null,
-      price: totalPrice - shipping - tax,
+      price: Number(totalPrice) - Number(shipping) - Number(tax),
       currency: checkout?.currencyCode || null,
       quantity: items.length,
-      discount,
-      coupon,
-      tax,
-      shipping,
       transaction_id: order?.id ? String(order.id) : null,
-      payment_type: checkout?.transactions?.[0]?.gateway || null,
-      user_email: checkout?.email || null,
       items,
     });
   });

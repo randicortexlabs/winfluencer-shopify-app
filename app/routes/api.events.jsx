@@ -33,33 +33,40 @@ export async function action({ request }) {
       event_type,
       wf_id,
       pixel_id,
+      shop: shopFromBody,
       product_id,
       product_title,
+      product_vendor,
       variant_id,
       variant_title,
       price,
       quantity,
       page_url,
+      currency,
+      items,
+      transaction_id,
     } = body;
 
     /**
      * Find the store — try multiple methods:
-     * 1. Shop domain from Shopify app proxy query params (most reliable)
-     * 2. Fallback to pixel_id lookup
+     * 1. Shop domain from Shopify app proxy query params (?shop=)
+     * 2. Shop domain from request body (sent by pixel)
+     * 3. Fallback to pixel_id lookup
      */
     const url = new URL(request.url);
     const shopFromProxy = url.searchParams.get("shop");
+    const shopDomain = shopFromProxy || shopFromBody || "";
 
     let store = null;
 
-    // Method 1: Shop from app proxy params
-    if (shopFromProxy) {
+    // Method 1+2: Shop domain (from proxy or body)
+    if (shopDomain) {
       store = await db.store.findUnique({
-        where: { shop: shopFromProxy },
+        where: { shop: shopDomain },
       });
     }
 
-    // Method 2: Fallback to pixel_id
+    // Method 3: Fallback to pixel_id
     if (!store && pixel_id) {
       store = await db.store.findUnique({
         where: { pixelId: String(pixel_id) },
@@ -68,19 +75,20 @@ export async function action({ request }) {
 
     if (!store) {
       console.error(
-        "[api.events] Store not found. shop:",
+        "[api.events] Store not found. shopFromProxy:",
         shopFromProxy,
+        "shopFromBody:",
+        shopFromBody,
         "pixel_id:",
-        pixel_id
+        pixel_id,
       );
-      // Still return ok to avoid errors on storefront
-      return corsJson({ ok: true, saved: false });
+      return corsJson({ ok: true, saved: false, reason: "store_not_found" });
     }
 
     // Find influencer by wf_id if provided
     let influencerId = null;
     if (wf_id) {
-      const influencer = await db.influencer.findUnique({
+      const influencer = await db.influencer.findFirst({
         where: { wfId: String(wf_id) },
       });
       if (influencer) {
@@ -88,7 +96,7 @@ export async function action({ request }) {
       }
     }
 
-    // Save event to database
+    // Save main event to database
     await db.event.create({
       data: {
         storeId: store.id,
@@ -108,13 +116,44 @@ export async function action({ request }) {
           quantity != null && quantity !== ""
             ? Number.parseInt(String(quantity), 10)
             : null,
-        pageUrl: page_url ? String(page_url) : null,
+        pageUrl: page_url ? String(page_url).substring(0, 2000) : null,
       },
     });
+
+    // For checkout events with line items, save each item as a separate event
+    if (items && Array.isArray(items) && items.length > 0 &&
+        (event_type === "checkout_completed" || event_type === "checkout_started")) {
+      const itemEvents = items.map((item) => ({
+        storeId: store.id,
+        influencerId,
+        wfId: wf_id ? String(wf_id) : null,
+        sessionId: "",
+        eventType: event_type === "checkout_completed"
+          ? "item_purchased"
+          : "item_checkout_started",
+        productId: item.product_id ? String(item.product_id) : null,
+        productTitle: item.product_title ? String(item.product_title) : null,
+        variantId: item.variant_id ? String(item.variant_id) : null,
+        variantTitle: item.variant_title ? String(item.variant_title) : null,
+        price: item.price != null ? Number.parseFloat(String(item.price)) : null,
+        quantity: item.quantity || 1,
+        pageUrl: page_url ? String(page_url).substring(0, 2000) : null,
+      }));
+
+      await db.event.createMany({ data: itemEvents });
+    }
+
+    console.log(
+      "[api.events] Saved:",
+      event_type,
+      "wf_id:", wf_id || "none",
+      "store:", store.shop,
+      "product:", product_title || "n/a",
+    );
 
     return corsJson({ ok: true, saved: true });
   } catch (err) {
     console.error("[api.events] Failed to persist event:", err);
-    return corsJson({ ok: true, saved: false });
+    return corsJson({ ok: true, saved: false, reason: "internal_error" });
   }
 }

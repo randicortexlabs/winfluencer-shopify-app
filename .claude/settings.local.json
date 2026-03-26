@@ -6,7 +6,10 @@
       "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\\\\|placeholder\\\\|wip\\\\|WIP\" C:UsersranduOneDriveDesktopwinfluencers_com_mainwinfluencer-shopifyapp-corewinfluencer-app/app --include=*.jsx --include=*.js)",
       "Bash(grep -E \"$|id\")",
       "Bash(npx prisma:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(find C:/Users/randu/OneDrive/Desktop/winfluencers_com_main/winfluencer-shopifyapp-core/winfluencer-app/app/routes -type f -name *api*)",
+      "Bash(find C:/Users/randu/OneDrive/Desktop/winfluencers_com_main/winfluencer-shopifyapp-core/winfluencer-app -maxdepth 2 -name *.config.* -o -name remix.config.*)",
+      "Bash(node -e \":*)"
     ]
   }
 }
