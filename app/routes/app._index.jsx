@@ -50,10 +50,11 @@ export const loader = async ({ request }) => {
     }
   }
 
-  if (isNewInstall && store) {
+  // Always check and inject snippet (re-injects if missing from theme)
+  if (store) {
     try {
       const injected = await injectSnippetIntoTheme(shop, accessToken, store.pixelId);
-      console.log("[Winfluencer] injectSnippetIntoTheme", injected ? "success" : "failure");
+      console.log("[Winfluencer] injectSnippetIntoTheme", injected ? "success" : "already exists or injected");
     } catch (e) {
       console.log("[Winfluencer] injectSnippetIntoTheme failure", e);
     }
