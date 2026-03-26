@@ -1,8 +1,10 @@
 {% comment %}
-  Winfluencer App Embed Block
+  Winfluencer Tracking Snippet
   Purpose: Capture wf_id from URL → localStorage → cart attributes
   This is the ONLY storefront-side code. All event tracking is handled
   by the Custom Pixel via Shopify's Web Pixels API.
+
+  Usage: Add {% render 'wf-tracker' %} just before </body> in theme.liquid
 {% endcomment %}
 
 <script>
@@ -54,11 +56,3 @@
   } catch(e) {}
 })();
 </script>
-
-{% schema %}
-{
-  "name": "Winfluencer Tracking",
-  "target": "body",
-  "settings": []
-}
-{% endschema %}

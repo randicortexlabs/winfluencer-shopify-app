@@ -9,7 +9,9 @@
       "Bash(npm run:*)",
       "Bash(find C:/Users/randu/OneDrive/Desktop/winfluencers_com_main/winfluencer-shopifyapp-core/winfluencer-app/app/routes -type f -name *api*)",
       "Bash(find C:/Users/randu/OneDrive/Desktop/winfluencers_com_main/winfluencer-shopifyapp-core/winfluencer-app -maxdepth 2 -name *.config.* -o -name remix.config.*)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "WebFetch(domain:shopify.dev)",
+      "WebSearch"
     ]
   }
 }
