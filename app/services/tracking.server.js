@@ -16,6 +16,9 @@ function normalizeShopDomain(shop) {
 export function buildTrackingSnippet(pixelId) {
   const pid = JSON.stringify(String(pixelId));
   return `(function(){
+  var ENDPOINT='/apps/winfluencer/events';
+  var PIXEL_ID=${pid};
+
   function getSessionId(){
     try{
       var k='wf_session_id';
@@ -27,6 +30,35 @@ export function buildTrackingSnippet(pixelId) {
       return id;
     }catch(e){ return 'wf_unknown'; }
   }
+
+  function getWfId(){
+    try{ return localStorage.getItem('wf_id')||''; }catch(e){ return ''; }
+  }
+
+  function sendEvent(eventType, extra){
+    var payload={
+      event_type:eventType,
+      wf_id:getWfId(),
+      pixel_id:PIXEL_ID,
+      session_id:getSessionId(),
+      product_id:null,
+      product_title:null,
+      variant_id:null,
+      variant_title:null,
+      price:null,
+      quantity:null,
+      page_url:typeof location!=='undefined'?location.href:null
+    };
+    if(extra){for(var k in extra){payload[k]=extra[k];}}
+    fetch(ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+      keepalive:true
+    }).catch(function(){});
+  }
+
+  /* 1. Capture wf_id from URL and persist */
   try{
     var params=new URLSearchParams(window.location.search);
     var wfFromUrl=params.get('wf_id');
@@ -39,27 +71,68 @@ export function buildTrackingSnippet(pixelId) {
       }).catch(function(){});
     }
   }catch(e){}
-  var wfStored='';
-  try{ wfStored=localStorage.getItem('wf_id')||''; }catch(e){}
-  var payload={
-    event_type:'pageview',
-    wf_id:wfStored,
-    pixel_id:${pid},
-    session_id:getSessionId(),
-    product_id:null,
-    product_title:null,
-    variant_id:null,
-    variant_title:null,
-    price:null,
-    quantity:null,
-    page_url:typeof location!=='undefined'?location.href:null
-  };
-  fetch('/apps/winfluencer/events',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(payload),
-    keepalive:true
-  }).catch(function(){});
+
+  /* 2. Keep cart attribute in sync (even without URL param, if wf_id exists in localStorage) */
+  var storedWf=getWfId();
+  if(storedWf){
+    fetch('/cart/update.js',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({attributes:{'wf_influencer_id':storedWf}})
+    }).catch(function(){});
+  }
+
+  /* 3. Send pageview event */
+  sendEvent('pageview');
+
+  /* 4. Track product_viewed on product pages */
+  try{
+    if(window.location.pathname.indexOf('/products/')!==-1){
+      var meta=window.meta||window.ShopifyAnalytics&&ShopifyAnalytics.meta||{};
+      var product=meta.product||{};
+      var selectedVariant=meta.selectedVariantId||null;
+      sendEvent('product_viewed',{
+        product_id:product.id?String(product.id):null,
+        product_title:product.type||document.title||null,
+        variant_id:selectedVariant?String(selectedVariant):null,
+        price:product.variants&&product.variants[0]?product.variants[0].price:null
+      });
+    }
+  }catch(e){}
+
+  /* 5. Intercept add-to-cart to track product_added_to_cart */
+  try{
+    var origFetch=window.fetch;
+    window.fetch=function(){
+      var url=arguments[0];
+      var opts=arguments[1];
+      if(typeof url==='string'&&(url.indexOf('/cart/add')!==-1)){
+        try{
+          var bodyStr=opts&&opts.body?opts.body:'';
+          if(typeof bodyStr==='string'&&bodyStr){
+            var cartData=JSON.parse(bodyStr);
+            var items=cartData.items||[cartData];
+            for(var i=0;i<items.length;i++){
+              sendEvent('product_added_to_cart',{
+                variant_id:items[i].id?String(items[i].id):null,
+                quantity:items[i].quantity||1
+              });
+            }
+          }
+        }catch(e){}
+        /* Also refresh cart attribute with wf_id after add-to-cart */
+        var wf=getWfId();
+        if(wf){
+          origFetch('/cart/update.js',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({attributes:{'wf_influencer_id':wf}})
+          }).catch(function(){});
+        }
+      }
+      return origFetch.apply(this,arguments);
+    };
+  }catch(e){}
 })();`;
 }
 
