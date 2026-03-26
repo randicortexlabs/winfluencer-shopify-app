@@ -1,2 +1,10 @@
+api_version = "2025-04"
+uid = "914a9b0e-bd7f-ff14-f1f9-bc6725e059b37fe4c075"
 type = "theme_app_extension"
 name = "Winfluencer Tracking"
+
+[[extensions.blocks]]
+name = "Winfluencer Tracking"
+target = "body"
+template = "blocks/wf-tracker.liquid"
+enabled_by_default = true
