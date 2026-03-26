@@ -6,23 +6,20 @@ register(({ analytics, init, browser }) => {
    * Subscribes to ALL Shopify Customer Events and sends data to our API.
    * Uses ABSOLUTE URL to avoid sandbox routing issues.
    *
-   * Events tracked:
-   * - page_viewed (every page)
-   * - product_viewed (product pages)
-   * - product_added_to_cart (add to cart)
-   * - cart_viewed (cart page)
-   * - checkout_started
-   * - checkout_completed (purchase)
-   * - collection_viewed
-   * - search_submitted
+   * wf_id resolution strategy (in priority order):
+   * 1. Cached value (already found in a previous event)
+   * 2. URL parameter ?wf_id= from the page URL
+   * 3. Cart attributes from the event data
+   * 4. Checkout attributes from the event data
+   * 5. Init cart attributes (loaded at pixel startup)
    */
 
   const ENDPOINT = "https://winfluencer-shopify-app.vercel.app/api/events";
 
-  /* ─── RESOLVE WF_ID from cart/checkout attributes ─── */
+  /* ─── WF_ID CACHE ─── */
   let cachedWfId = "";
 
-  // Try init.data.cart.attributes first
+  /* ─── Try init.data.cart.attributes at startup ─── */
   try {
     const cartAttrs = init?.data?.cart?.attributes || [];
     for (const attr of cartAttrs) {
@@ -33,11 +30,36 @@ register(({ analytics, init, browser }) => {
     }
   } catch (e) {}
 
+  /* ─── RESOLVE WF_ID: multi-source, re-checks on every event ─── */
   function resolveWfId(event) {
-    // Return cached if we have it
+    // 1. Return cached if we already have it
     if (cachedWfId) return cachedWfId;
 
-    // Try checkout attributes
+    // 2. Parse from page URL (?wf_id= parameter)
+    try {
+      const href = event?.context?.document?.location?.href || "";
+      if (href.includes("wf_id=")) {
+        const url = new URL(href);
+        const fromUrl = url.searchParams.get("wf_id");
+        if (fromUrl) {
+          cachedWfId = fromUrl;
+          return cachedWfId;
+        }
+      }
+    } catch (e) {}
+
+    // 3. Try cart attributes from the event (updated on every event)
+    try {
+      const cartAttrs = event?.data?.cart?.attributes || [];
+      for (const attr of cartAttrs) {
+        if (attr.key === "wf_influencer_id" && attr.value) {
+          cachedWfId = attr.value;
+          return cachedWfId;
+        }
+      }
+    } catch (e) {}
+
+    // 4. Try checkout attributes
     try {
       const attrs = event?.data?.checkout?.attributes || [];
       for (const attr of attrs) {
@@ -48,10 +70,10 @@ register(({ analytics, init, browser }) => {
       }
     } catch (e) {}
 
-    // Try cart attributes from the event
+    // 5. Re-check init cart attributes (in case they loaded late)
     try {
-      const cartAttrs = event?.data?.cart?.attributes || [];
-      for (const attr of cartAttrs) {
+      const initAttrs = init?.data?.cart?.attributes || [];
+      for (const attr of initAttrs) {
         if (attr.key === "wf_influencer_id" && attr.value) {
           cachedWfId = attr.value;
           return cachedWfId;
@@ -67,9 +89,7 @@ register(({ analytics, init, browser }) => {
 
   /* ─── SEND EVENT ─── */
   function sendEvent(payload) {
-    // Add shop domain for store lookup (since no app proxy adds ?shop=)
     payload.shop = shopDomain;
-
     fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
