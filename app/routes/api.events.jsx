@@ -1,5 +1,3 @@
-import db from "../db.server";
-
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -28,12 +26,13 @@ export async function action({ request }) {
   }
 
   try {
+    const { default: db } = await import("../db.server");
+
     const body = await request.json();
     const {
       event_type,
       wf_id,
       pixel_id,
-      session_id,
       product_id,
       product_title,
       variant_id,
@@ -43,20 +42,42 @@ export async function action({ request }) {
       page_url,
     } = body;
 
-    if (!pixel_id) {
-      console.error("[api.events] Missing pixel_id");
-      return corsJson({ ok: true });
+    /**
+     * Find the store — try multiple methods:
+     * 1. Shop domain from Shopify app proxy query params (most reliable)
+     * 2. Fallback to pixel_id lookup
+     */
+    const url = new URL(request.url);
+    const shopFromProxy = url.searchParams.get("shop");
+
+    let store = null;
+
+    // Method 1: Shop from app proxy params
+    if (shopFromProxy) {
+      store = await db.store.findUnique({
+        where: { shop: shopFromProxy },
+      });
     }
 
-    const store = await db.store.findUnique({
-      where: { pixelId: String(pixel_id) },
-    });
+    // Method 2: Fallback to pixel_id
+    if (!store && pixel_id) {
+      store = await db.store.findUnique({
+        where: { pixelId: String(pixel_id) },
+      });
+    }
 
     if (!store) {
-      console.error("[api.events] Unknown pixel_id:", pixel_id);
-      return corsJson({ ok: true });
+      console.error(
+        "[api.events] Store not found. shop:",
+        shopFromProxy,
+        "pixel_id:",
+        pixel_id
+      );
+      // Still return ok to avoid errors on storefront
+      return corsJson({ ok: true, saved: false });
     }
 
+    // Find influencer by wf_id if provided
     let influencerId = null;
     if (wf_id) {
       const influencer = await db.influencer.findUnique({
@@ -67,17 +88,18 @@ export async function action({ request }) {
       }
     }
 
+    // Save event to database
     await db.event.create({
       data: {
         storeId: store.id,
         influencerId,
-        wfId: wf_id != null ? String(wf_id) : null,
-        sessionId: session_id != null ? String(session_id) : "",
-        eventType: event_type != null ? String(event_type) : "unknown",
-        productId: product_id != null ? String(product_id) : null,
-        productTitle: product_title != null ? String(product_title) : null,
-        variantId: variant_id != null ? String(variant_id) : null,
-        variantTitle: variant_title != null ? String(variant_title) : null,
+        wfId: wf_id ? String(wf_id) : null,
+        sessionId: "",
+        eventType: event_type ? String(event_type) : "unknown",
+        productId: product_id ? String(product_id) : null,
+        productTitle: product_title ? String(product_title) : null,
+        variantId: variant_id ? String(variant_id) : null,
+        variantTitle: variant_title ? String(variant_title) : null,
         price:
           price != null && price !== ""
             ? Number.parseFloat(String(price))
@@ -86,12 +108,13 @@ export async function action({ request }) {
           quantity != null && quantity !== ""
             ? Number.parseInt(String(quantity), 10)
             : null,
-        pageUrl: page_url != null ? String(page_url) : null,
+        pageUrl: page_url ? String(page_url) : null,
       },
     });
+
+    return corsJson({ ok: true, saved: true });
   } catch (err) {
     console.error("[api.events] Failed to persist event:", err);
+    return corsJson({ ok: true, saved: false });
   }
-
-  return corsJson({ ok: true });
 }

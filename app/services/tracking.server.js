@@ -14,120 +14,49 @@ function normalizeShopDomain(shop) {
  * session id, and pageview to the app proxy events path.
  */
 export function buildTrackingSnippet(pixelId) {
-  const pid = JSON.stringify(String(pixelId));
   return `(function(){
-  var ENDPOINT='/apps/winfluencer/events';
-  var PIXEL_ID=${pid};
-
-  function getSessionId(){
-    try{
-      var k='wf_session_id';
-      var id=sessionStorage.getItem(k);
-      if(!id){
-        id='wf_'+Math.random().toString(36).slice(2)+'_'+Date.now().toString(36);
-        sessionStorage.setItem(k,id);
-      }
-      return id;
-    }catch(e){ return 'wf_unknown'; }
-  }
+  /**
+   * Winfluencer Theme Snippet — ONLY captures wf_id and writes to cart attributes.
+   * All event tracking is handled by the Custom Pixel via Shopify Customer Events API.
+   */
 
   function getWfId(){
     try{ return localStorage.getItem('wf_id')||''; }catch(e){ return ''; }
   }
 
-  function sendEvent(eventType, extra){
-    var payload={
-      event_type:eventType,
-      wf_id:getWfId(),
-      pixel_id:PIXEL_ID,
-      session_id:getSessionId(),
-      product_id:null,
-      product_title:null,
-      variant_id:null,
-      variant_title:null,
-      price:null,
-      quantity:null,
-      page_url:typeof location!=='undefined'?location.href:null
-    };
-    if(extra){for(var k in extra){payload[k]=extra[k];}}
-    fetch(ENDPOINT,{
+  function writeCartAttribute(wfId){
+    fetch('/cart/update.js',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload),
-      keepalive:true
+      body:JSON.stringify({attributes:{'wf_influencer_id':wfId}})
     }).catch(function(){});
   }
 
-  /* 1. Capture wf_id from URL and persist */
+  /* 1. Capture wf_id from URL param and persist to localStorage */
   try{
     var params=new URLSearchParams(window.location.search);
     var wfFromUrl=params.get('wf_id');
     if(wfFromUrl){
       try{ localStorage.setItem('wf_id',wfFromUrl); }catch(e){}
-      fetch('/cart/update.js',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({attributes:{'wf_influencer_id':wfFromUrl}})
-      }).catch(function(){});
+      writeCartAttribute(wfFromUrl);
     }
   }catch(e){}
 
-  /* 2. Keep cart attribute in sync (even without URL param, if wf_id exists in localStorage) */
+  /* 2. Keep cart attribute in sync on every page load */
   var storedWf=getWfId();
   if(storedWf){
-    fetch('/cart/update.js',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({attributes:{'wf_influencer_id':storedWf}})
-    }).catch(function(){});
+    writeCartAttribute(storedWf);
   }
 
-  /* 3. Send pageview event */
-  sendEvent('pageview');
-
-  /* 4. Track product_viewed on product pages */
-  try{
-    if(window.location.pathname.indexOf('/products/')!==-1){
-      var meta=window.meta||window.ShopifyAnalytics&&ShopifyAnalytics.meta||{};
-      var product=meta.product||{};
-      var selectedVariant=meta.selectedVariantId||null;
-      sendEvent('product_viewed',{
-        product_id:product.id?String(product.id):null,
-        product_title:product.type||document.title||null,
-        variant_id:selectedVariant?String(selectedVariant):null,
-        price:product.variants&&product.variants[0]?product.variants[0].price:null
-      });
-    }
-  }catch(e){}
-
-  /* 5. Intercept add-to-cart to track product_added_to_cart */
+  /* 3. Re-sync cart attribute after any add-to-cart (ensures wf_id survives cart changes) */
   try{
     var origFetch=window.fetch;
     window.fetch=function(){
       var url=arguments[0];
-      var opts=arguments[1];
-      if(typeof url==='string'&&(url.indexOf('/cart/add')!==-1)){
-        try{
-          var bodyStr=opts&&opts.body?opts.body:'';
-          if(typeof bodyStr==='string'&&bodyStr){
-            var cartData=JSON.parse(bodyStr);
-            var items=cartData.items||[cartData];
-            for(var i=0;i<items.length;i++){
-              sendEvent('product_added_to_cart',{
-                variant_id:items[i].id?String(items[i].id):null,
-                quantity:items[i].quantity||1
-              });
-            }
-          }
-        }catch(e){}
-        /* Also refresh cart attribute with wf_id after add-to-cart */
+      if(typeof url==='string'&&url.indexOf('/cart/add')!==-1){
         var wf=getWfId();
         if(wf){
-          origFetch('/cart/update.js',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({attributes:{'wf_influencer_id':wf}})
-          }).catch(function(){});
+          setTimeout(function(){ writeCartAttribute(wf); },500);
         }
       }
       return origFetch.apply(this,arguments);
