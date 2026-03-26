@@ -1,11 +1,9 @@
 {% comment %}
-  Winfluencer Tracking Snippet
+  Winfluencer App Embed Block
   Purpose: Capture wf_id from URL → cart attributes (+ localStorage as backup)
   Cart attributes do NOT require cookie consent — they are first-party functional data.
   This is the ONLY storefront-side code. All event tracking is handled
   by the Custom Pixel via Shopify's Web Pixels API.
-
-  Usage: Add {% render 'wf-tracker' %} just before </body> in theme.liquid
 {% endcomment %}
 
 <script>
@@ -37,13 +35,12 @@
     }).catch(function(){});
   }
 
-  /* 4. Re-sync cart attribute after any add-to-cart (preserves attribution through cart changes) */
+  /* 4. Re-sync cart attribute after any add-to-cart or cart-change */
   try {
     var origFetch = window.fetch;
     window.fetch = function() {
       var url = arguments[0];
       if (typeof url === 'string' && (url.indexOf('/cart/add') !== -1 || url.indexOf('/cart/change') !== -1)) {
-        /* Get wf_id from any available source */
         var storedWf = '';
         try {
           var p = new URLSearchParams(window.location.search);
@@ -68,3 +65,11 @@
   } catch(e) {}
 })();
 </script>
+
+{% schema %}
+{
+  "name": "Winfluencer Tracking",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}
