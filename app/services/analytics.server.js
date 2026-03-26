@@ -21,7 +21,7 @@ export async function getStoreFunnelCounts(storeId) {
   }
 
   return {
-    visitors: counts["pageview"] || 0,
+    visitors: (counts["page_viewed"] || 0) + (counts["pageview"] || 0),
     productViews: counts["product_viewed"] || 0,
     addToCart: counts["product_added_to_cart"] || 0,
     checkoutStarted: counts["checkout_started"] || 0,
@@ -46,7 +46,7 @@ export async function getInfluencerFunnelCounts(influencerId) {
   }
 
   return {
-    visitors: counts["pageview"] || 0,
+    visitors: (counts["page_viewed"] || 0) + (counts["pageview"] || 0),
     productViews: counts["product_viewed"] || 0,
     addToCart: counts["product_added_to_cart"] || 0,
     checkoutStarted: counts["checkout_started"] || 0,
@@ -71,7 +71,7 @@ export async function getCampaignFunnelCounts(campaignId) {
   }
 
   return {
-    visitors: counts["pageview"] || 0,
+    visitors: (counts["page_viewed"] || 0) + (counts["pageview"] || 0),
     productViews: counts["product_viewed"] || 0,
     addToCart: counts["product_added_to_cart"] || 0,
     checkoutStarted: counts["checkout_started"] || 0,
@@ -155,7 +155,7 @@ export async function getTopInfluencers(storeId, limit = 5) {
   const enriched = influencers.map((inf) => {
     const events = eventMap[inf.id] || {};
     const orders = orderMap[inf.id] || { count: 0, revenue: 0 };
-    const visitors = events["pageview"] || 0;
+    const visitors = (events["page_viewed"] || 0) + (events["pageview"] || 0);
     const addToCart = events["product_added_to_cart"] || 0;
     const convRate =
       visitors > 0 ? ((orders.count / visitors) * 100).toFixed(1) : "0.0";
