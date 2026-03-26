@@ -16,7 +16,7 @@ function normalizeShopDomain(shop) {
 export function buildTrackingSnippet(pixelId) {
   const pid = JSON.stringify(String(pixelId));
   return `(function(){
-  var ENDPOINT='/apps/winfluencer/api/events';
+  var ENDPOINT='/apps/winfluencer/events';
   var PIXEL_ID=${pid};
 
   function getSessionId(){

@@ -29,7 +29,7 @@ use_legacy_install_flow = false
 redirect_urls = [ "https://winfluencer-shopify-app.vercel.app/api/auth" ]
 
 [app_proxy]
-url = "https://winfluencer-shopify-app.vercel.app"
+url = "https://winfluencer-shopify-app.vercel.app/api"
 subpath = "winfluencer"
 prefix = "apps"
 
