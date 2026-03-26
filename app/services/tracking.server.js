@@ -16,9 +16,12 @@ function normalizeShopDomain(shop) {
 export function buildTrackingSnippet(pixelId) {
   return `(function(){
   /**
-   * Winfluencer Theme Snippet — ONLY captures wf_id and writes to cart attributes.
-   * All event tracking is handled by the Custom Pixel via Shopify Customer Events API.
+   * Winfluencer Theme Snippet
+   * 1. Captures wf_id from URL → localStorage → cart attributes
+   * 2. Sends pre-checkout events: page_viewed, product_viewed, product_added_to_cart
+   * (Checkout events are handled by the Custom Pixel which has checkout.attributes access)
    */
+  var ENDPOINT='/apps/winfluencer/events';
 
   function getWfId(){
     try{ return localStorage.getItem('wf_id')||''; }catch(e){ return ''; }
@@ -29,6 +32,28 @@ export function buildTrackingSnippet(pixelId) {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({attributes:{'wf_influencer_id':wfId}})
+    }).catch(function(){});
+  }
+
+  function sendEvent(eventType, extra){
+    var payload={
+      event_type:eventType,
+      wf_id:getWfId(),
+      page_url:location.href,
+      page_title:document.title||'',
+      product_id:null,
+      product_title:null,
+      variant_id:null,
+      variant_title:null,
+      price:null,
+      quantity:null
+    };
+    if(extra){for(var k in extra){payload[k]=extra[k];}}
+    fetch(ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+      keepalive:true
     }).catch(function(){});
   }
 
@@ -48,12 +73,63 @@ export function buildTrackingSnippet(pixelId) {
     writeCartAttribute(storedWf);
   }
 
-  /* 3. Re-sync cart attribute after any add-to-cart (ensures wf_id survives cart changes) */
+  /* 3. Send page_viewed on every page */
+  sendEvent('page_viewed');
+
+  /* 4. Send product_viewed on product pages — extract data from Shopify's JSON-LD */
+  try{
+    if(location.pathname.indexOf('/products/')!==-1){
+      var jsonLd=document.querySelector('script[type="application/ld+json"]');
+      if(jsonLd){
+        var ld=JSON.parse(jsonLd.textContent);
+        if(ld['@type']==='Product'){
+          var offer=(ld.offers&&ld.offers[0])||ld.offers||{};
+          sendEvent('product_viewed',{
+            product_id:ld.productID||ld.sku||null,
+            product_title:ld.name||null,
+            product_vendor:ld.brand&&ld.brand.name?ld.brand.name:null,
+            variant_title:null,
+            price:offer.price?Number(offer.price):null,
+            currency:offer.priceCurrency||null
+          });
+        }
+      }else{
+        /* Fallback: use ShopifyAnalytics.meta if JSON-LD not available */
+        var meta=window.ShopifyAnalytics&&ShopifyAnalytics.meta||{};
+        var p=meta.product||{};
+        if(p.id){
+          sendEvent('product_viewed',{
+            product_id:String(p.id),
+            product_title:p.type||document.title,
+            variant_id:meta.selectedVariantId?String(meta.selectedVariantId):null,
+            price:p.variants&&p.variants[0]?p.variants[0].price:null
+          });
+        }
+      }
+    }
+  }catch(e){}
+
+  /* 5. Intercept add-to-cart to track product_added_to_cart */
   try{
     var origFetch=window.fetch;
     window.fetch=function(){
       var url=arguments[0];
+      var opts=arguments[1];
       if(typeof url==='string'&&url.indexOf('/cart/add')!==-1){
+        try{
+          var bodyStr=opts&&opts.body?opts.body:'';
+          if(typeof bodyStr==='string'&&bodyStr){
+            var cartData=JSON.parse(bodyStr);
+            var items=cartData.items||[cartData];
+            for(var i=0;i<items.length;i++){
+              sendEvent('product_added_to_cart',{
+                variant_id:items[i].id?String(items[i].id):null,
+                quantity:items[i].quantity||1
+              });
+            }
+          }
+        }catch(e){}
+        /* Re-sync cart attribute after add-to-cart */
         var wf=getWfId();
         if(wf){
           setTimeout(function(){ writeCartAttribute(wf); },500);
