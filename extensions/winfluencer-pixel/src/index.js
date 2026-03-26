@@ -2,7 +2,7 @@ import { register } from "@shopify/web-pixels-extension";
 
 register(({ analytics, settings }) => {
   const pixelId = settings.pixelId;
-  const endpoint = "/apps/winfluencer/events";
+  const endpoint = "/apps/winfluencer/api/events";
 
   function getSessionId() {
     try {
