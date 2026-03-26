@@ -18,6 +18,8 @@ register(({ analytics, init, browser }) => {
 
   /* ─── WF_ID CACHE ─── */
   let cachedWfId = "";
+  let cartFetchDone = false;
+  let pendingEvents = [];
 
   /* ─── Try init.data.cart.attributes at startup ─── */
   try {
@@ -29,6 +31,32 @@ register(({ analytics, init, browser }) => {
       }
     }
   } catch (e) {}
+
+  /* ─── Fetch /cart.js to get fresh cart attributes (most reliable) ─── */
+  const shopOrigin = init?.data?.shop?.myshopifyDomain
+    ? "https://" + init.data.shop.myshopifyDomain
+    : "";
+
+  if (!cachedWfId && shopOrigin) {
+    fetch(shopOrigin + "/cart.js", { method: "GET", credentials: "include" })
+      .then((r) => r.json())
+      .then((cart) => {
+        if (cart.attributes && cart.attributes.wf_influencer_id) {
+          cachedWfId = cart.attributes.wf_influencer_id;
+        }
+        cartFetchDone = true;
+        // Flush any events that were waiting for wf_id
+        pendingEvents.forEach((fn) => fn());
+        pendingEvents = [];
+      })
+      .catch(() => {
+        cartFetchDone = true;
+        pendingEvents.forEach((fn) => fn());
+        pendingEvents = [];
+      });
+  } else {
+    cartFetchDone = true;
+  }
 
   /* ─── RESOLVE WF_ID: multi-source, re-checks on every event ─── */
   function resolveWfId(event) {
@@ -90,6 +118,18 @@ register(({ analytics, init, browser }) => {
   /* ─── SEND EVENT ─── */
   function sendEvent(payload) {
     payload.shop = shopDomain;
+    // If cart fetch is still pending and we don't have wf_id yet, queue the event
+    if (!cartFetchDone && !cachedWfId && !payload.wf_id) {
+      pendingEvents.push(() => {
+        payload.wf_id = cachedWfId || "";
+        doSend(payload);
+      });
+      return;
+    }
+    doSend(payload);
+  }
+
+  function doSend(payload) {
     fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
