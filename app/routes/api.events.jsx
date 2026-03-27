@@ -45,6 +45,7 @@ export async function action({ request }) {
       currency,
       items,
       transaction_id,
+      session_id,
     } = body;
 
     /**
@@ -102,7 +103,7 @@ export async function action({ request }) {
         storeId: store.id,
         influencerId,
         wfId: wf_id ? String(wf_id) : null,
-        sessionId: "",
+        sessionId: session_id ? String(session_id) : "",
         eventType: event_type ? String(event_type) : "unknown",
         productId: product_id ? String(product_id) : null,
         productTitle: product_title ? String(product_title) : null,
@@ -127,7 +128,7 @@ export async function action({ request }) {
         storeId: store.id,
         influencerId,
         wfId: wf_id ? String(wf_id) : null,
-        sessionId: "",
+        sessionId: session_id ? String(session_id) : "",
         eventType: event_type === "checkout_completed"
           ? "item_purchased"
           : "item_checkout_started",
