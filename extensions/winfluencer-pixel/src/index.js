@@ -118,17 +118,18 @@ register(({ analytics, init, browser }) => {
   /* ─── GET SHOP DOMAIN for store lookup ─── */
   const shopDomain = init?.data?.shop?.myshopifyDomain || "";
 
-  /* ─── SESSION ID from cart token (unique per browser session) ─── */
-  let sessionId = init?.data?.cart?.token || init?.data?.checkout?.token || "";
-  /* If cart fetch found a token, use it */
-  if (!sessionId && cartFetchDone) {
-    // Will be set after cart fetch completes
-  }
+  /* ─── SESSION ID: try multiple sources ─── */
+  let sessionId = "";
+  // 1. Try cart token from init data
+  try { sessionId = init?.data?.cart?.token || ""; } catch (e) {}
+  // 2. Try checkout token
+  if (!sessionId) { try { sessionId = init?.data?.checkout?.token || ""; } catch (e) {} }
 
   /* ─── SEND EVENT ─── */
   function sendEvent(payload) {
     payload.shop = shopDomain;
-    payload.session_id = sessionId;
+    // Always use latest sessionId (may have been updated by /cart.js fetch)
+    payload.session_id = sessionId || "";
     // If cart fetch is still pending and we don't have wf_id yet, queue the event
     if (!cartFetchDone && !cachedWfId && !payload.wf_id) {
       pendingEvents.push(() => {
