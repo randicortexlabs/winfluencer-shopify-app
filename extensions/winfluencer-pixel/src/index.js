@@ -44,8 +44,12 @@ register(({ analytics, init, browser }) => {
         if (cart.attributes && cart.attributes.wf_influencer_id) {
           cachedWfId = cart.attributes.wf_influencer_id;
         }
+        // Get session ID from cart token or wf_session_id attribute
         if (!sessionId && cart.token) {
           sessionId = cart.token;
+        }
+        if (!sessionId && cart.attributes && cart.attributes.wf_session_id) {
+          sessionId = cart.attributes.wf_session_id;
         }
         cartFetchDone = true;
         // Flush any events that were waiting for wf_id
@@ -85,9 +89,12 @@ register(({ analytics, init, browser }) => {
       for (const attr of cartAttrs) {
         if (attr.key === "wf_influencer_id" && attr.value) {
           cachedWfId = attr.value;
-          return cachedWfId;
+        }
+        if (attr.key === "wf_session_id" && attr.value && !sessionId) {
+          sessionId = attr.value;
         }
       }
+      if (cachedWfId) return cachedWfId;
     } catch (e) {}
 
     // 4. Try checkout attributes
@@ -124,6 +131,18 @@ register(({ analytics, init, browser }) => {
   try { sessionId = init?.data?.cart?.token || ""; } catch (e) {}
   // 2. Try checkout token
   if (!sessionId) { try { sessionId = init?.data?.checkout?.token || ""; } catch (e) {} }
+  // 3. Try wf_session_id from cart attributes (written by theme snippet)
+  if (!sessionId) {
+    try {
+      const cartAttrs = init?.data?.cart?.attributes || [];
+      for (const attr of cartAttrs) {
+        if (attr.key === "wf_session_id" && attr.value) {
+          sessionId = attr.value;
+          break;
+        }
+      }
+    } catch (e) {}
+  }
 
   /* ─── SEND EVENT ─── */
   function sendEvent(payload) {

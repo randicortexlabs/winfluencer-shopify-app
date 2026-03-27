@@ -22,18 +22,35 @@
     try { wfId = localStorage.getItem('wf_id') || ''; } catch(e) {}
   }
 
-  /* 3. If we found a wf_id, save it everywhere we can */
-  if (wfId) {
-    /* 3a. Save to localStorage (backup for subsequent pages — may fail without consent) */
-    try { localStorage.setItem('wf_id', wfId); } catch(e) {}
+  /* 3. Write cart attributes — always fetch cart first to get token */
+  fetch('/cart.js').then(function(r){ return r.json(); }).then(function(cart) {
+    var cartToken = cart.token || '';
+    var attrs = {};
+    var needsUpdate = false;
 
-    /* 3b. Write to cart attributes IMMEDIATELY (no consent needed — first-party Shopify API) */
-    fetch('/cart/update.js', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attributes: { 'wf_influencer_id': wfId } })
-    }).catch(function(){});
-  }
+    /* 3a. Write wf_id if we have one */
+    if (wfId) {
+      try { localStorage.setItem('wf_id', wfId); } catch(e) {}
+      if (cart.attributes.wf_influencer_id !== wfId) {
+        attrs.wf_influencer_id = wfId;
+        needsUpdate = true;
+      }
+    }
+
+    /* 3b. Always write cart token as session ID */
+    if (cartToken && cart.attributes.wf_session_id !== cartToken) {
+      attrs.wf_session_id = cartToken;
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      fetch('/cart/update.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attributes: attrs })
+      }).catch(function(){});
+    }
+  }).catch(function(){});
 
   /* 4. Re-sync cart attribute after any add-to-cart or cart-change */
   try {
