@@ -29,8 +29,11 @@ export const loader = async ({ request }) => {
 
   const url = new URL(request.url);
   const campaignFilter = url.searchParams.get("campaign") || null;
+  const influencerFilter = url.searchParams.get("influencer") || null;
 
-  const filters = campaignFilter ? { campaignId: campaignFilter } : {};
+  const filters = {};
+  if (campaignFilter) filters.campaignId = campaignFilter;
+  if (influencerFilter) filters.influencerId = influencerFilter;
   const products = await getProductIntelligence(store.id, filters);
 
   // Compute aggregate metrics
@@ -75,6 +78,13 @@ export const loader = async ({ request }) => {
     influencerMap[inf.id] = inf.name;
   }
 
+  // Fetch all influencers for this store (for filter dropdown)
+  const allInfluencers = await db.influencer.findMany({
+    where: { campaign: { storeId: store.id } },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+
   return {
     products,
     totalProducts,
@@ -82,7 +92,9 @@ export const loader = async ({ request }) => {
     frictionCount,
     campaigns,
     campaignFilter,
+    influencerFilter,
     influencerMap,
+    allInfluencers,
   };
 };
 
@@ -94,6 +106,8 @@ export default function ProductsPage() {
     frictionCount,
     campaigns,
     campaignFilter,
+    influencerFilter,
+    allInfluencers,
   } = useLoaderData();
   const navigate = useNavigate();
 
@@ -102,12 +116,24 @@ export default function ProductsPage() {
     ...campaigns.map((c) => ({ label: c.name, value: c.id })),
   ];
 
+  const influencerOptions = [
+    { label: "All influencers", value: "" },
+    ...allInfluencers.map((i) => ({ label: i.name, value: i.id })),
+  ];
+
+  function buildFilterUrl(params) {
+    const parts = [];
+    if (params.campaign) parts.push(`campaign=${params.campaign}`);
+    if (params.influencer) parts.push(`influencer=${params.influencer}`);
+    return parts.length > 0 ? `/app/products?${parts.join("&")}` : "/app/products";
+  }
+
   const handleCampaignChange = (value) => {
-    if (value) {
-      navigate(`/app/products?campaign=${value}`);
-    } else {
-      navigate("/app/products");
-    }
+    navigate(buildFilterUrl({ campaign: value, influencer: influencerFilter || "" }));
+  };
+
+  const handleInfluencerChange = (value) => {
+    navigate(buildFilterUrl({ campaign: campaignFilter || "", influencer: value }));
   };
 
   const strongCount = products.filter((p) => p.signal === "Strong intent").length;
@@ -186,15 +212,26 @@ export default function ProductsPage() {
                   {highConvertCount > 0 && <Badge tone="info">{highConvertCount} high convert</Badge>}
                 </InlineStack>
               </InlineStack>
-              <div style={{ maxWidth: "250px" }}>
-                <Select
-                  label="Filter by campaign"
-                  labelHidden
-                  options={campaignOptions}
-                  onChange={handleCampaignChange}
-                  value={campaignFilter || ""}
-                />
-              </div>
+              <InlineStack gap="300">
+                <div style={{ minWidth: "200px" }}>
+                  <Select
+                    label="Filter by campaign"
+                    labelHidden
+                    options={campaignOptions}
+                    onChange={handleCampaignChange}
+                    value={campaignFilter || ""}
+                  />
+                </div>
+                <div style={{ minWidth: "200px" }}>
+                  <Select
+                    label="Filter by influencer"
+                    labelHidden
+                    options={influencerOptions}
+                    onChange={handleInfluencerChange}
+                    value={influencerFilter || ""}
+                  />
+                </div>
+              </InlineStack>
               <Divider />
               {rows.length > 0 ? (
                 <DataTable
