@@ -399,7 +399,7 @@ export async function getEnrichedCampaigns(storeId) {
         db.event.count({
           where: {
             influencerId: { in: influencerIds.length > 0 ? influencerIds : ["none"] },
-            eventType: "pageview",
+            eventType: { in: ["pageview", "page_viewed"] },
           },
         }),
       ]);

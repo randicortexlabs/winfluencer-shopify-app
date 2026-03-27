@@ -88,7 +88,7 @@ export const loader = async ({ request, params }) => {
   const influencers = campaign.influencers.map((inf) => {
     const events = eventMap[inf.id] || {};
     const orders = orderMap[inf.id] || { count: 0, revenue: 0 };
-    const visitors = events["pageview"] || 0;
+    const visitors = (events["pageview"] || 0) + (events["page_viewed"] || 0);
     const cart = events["product_added_to_cart"] || 0;
     const convRate = visitors > 0 ? ((orders.count / visitors) * 100).toFixed(1) : "0.0";
     const aov = orders.count > 0 ? (orders.revenue / orders.count).toFixed(2) : "0.00";

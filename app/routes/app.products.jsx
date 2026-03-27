@@ -113,6 +113,13 @@ export default function ProductsPage() {
   const strongCount = products.filter((p) => p.signal === "Strong intent").length;
   const highConvertCount = products.filter((p) => p.signal === "High convert").length;
 
+  function signalTone(signal) {
+    if (signal === "Strong intent") return "success";
+    if (signal === "High convert") return "info";
+    if (signal === "Price friction") return "critical";
+    return "new";
+  }
+
   const rows = products.map((p) => [
     p.productTitle,
     p.variantTitle,
@@ -121,7 +128,7 @@ export default function ProductsPage() {
     String(p.purchased),
     `${p.rate}%`,
     formatCurrency(p.revenue),
-    p.signal,
+    <Badge tone={signalTone(p.signal)}>{p.signal}</Badge>,
   ]);
 
   return (
