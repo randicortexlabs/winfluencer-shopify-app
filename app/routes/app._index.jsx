@@ -116,6 +116,7 @@ export default function DashboardPage() {
   ];
   const maxFunnel = Math.max(...funnelStages.map((s) => s.value), 1);
   const totalVisitors = funnel.visitors || 0;
+  const uniqueVisitors = funnel.uniqueVisitors || 0;
 
   const comparisonRows = allInfluencers.map((inf) => [
     inf.name,
@@ -156,7 +157,7 @@ export default function DashboardPage() {
 
         {/* Metric cards */}
         <Layout.Section>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "14px" }}>
             <Card>
               <BlockStack gap="150">
                 <Text as="p" tone="subdued">Total Revenue</Text>
@@ -165,8 +166,16 @@ export default function DashboardPage() {
             </Card>
             <Card>
               <BlockStack gap="150">
-                <Text as="p" tone="subdued">Active Influencers</Text>
-                <Text variant="headingLg" as="p">{metrics.influencerCount}</Text>
+                <Text as="p" tone="subdued">Total Visitors</Text>
+                <Text variant="headingLg" as="p">{totalVisitors.toLocaleString()}</Text>
+                <Text as="p" tone="subdued">page views</Text>
+              </BlockStack>
+            </Card>
+            <Card>
+              <BlockStack gap="150">
+                <Text as="p" tone="subdued">Unique Visitors</Text>
+                <Text variant="headingLg" as="p" tone="success">{uniqueVisitors.toLocaleString()}</Text>
+                <Text as="p" tone="subdued">distinct sessions</Text>
               </BlockStack>
             </Card>
             <Card>

@@ -6,13 +6,22 @@ import db from "../db.server";
  * Returns { pageview, product_viewed, product_added_to_cart, checkout_started, checkout_completed, purchased }
  */
 export async function getStoreFunnelCounts(storeId) {
-  const [eventGroups, orderCount] = await Promise.all([
+  const [eventGroups, orderCount, uniqueSessions] = await Promise.all([
     db.event.groupBy({
       by: ["eventType"],
       where: { storeId },
       _count: true,
     }),
     db.order.count({ where: { storeId } }),
+    db.event.findMany({
+      where: {
+        storeId,
+        eventType: { in: ["page_viewed", "pageview"] },
+        sessionId: { not: "" },
+      },
+      select: { sessionId: true },
+      distinct: ["sessionId"],
+    }),
   ]);
 
   const counts = {};
@@ -22,6 +31,7 @@ export async function getStoreFunnelCounts(storeId) {
 
   return {
     visitors: (counts["page_viewed"] || 0) + (counts["pageview"] || 0),
+    uniqueVisitors: uniqueSessions.length,
     productViews: counts["product_viewed"] || 0,
     addToCart: counts["product_added_to_cart"] || 0,
     checkoutStarted: counts["checkout_started"] || 0,

@@ -44,6 +44,9 @@ register(({ analytics, init, browser }) => {
         if (cart.attributes && cart.attributes.wf_influencer_id) {
           cachedWfId = cart.attributes.wf_influencer_id;
         }
+        if (!sessionId && cart.token) {
+          sessionId = cart.token;
+        }
         cartFetchDone = true;
         // Flush any events that were waiting for wf_id
         pendingEvents.forEach((fn) => fn());
@@ -115,9 +118,17 @@ register(({ analytics, init, browser }) => {
   /* ─── GET SHOP DOMAIN for store lookup ─── */
   const shopDomain = init?.data?.shop?.myshopifyDomain || "";
 
+  /* ─── SESSION ID from cart token (unique per browser session) ─── */
+  let sessionId = init?.data?.cart?.token || init?.data?.checkout?.token || "";
+  /* If cart fetch found a token, use it */
+  if (!sessionId && cartFetchDone) {
+    // Will be set after cart fetch completes
+  }
+
   /* ─── SEND EVENT ─── */
   function sendEvent(payload) {
     payload.shop = shopDomain;
+    payload.session_id = sessionId;
     // If cart fetch is still pending and we don't have wf_id yet, queue the event
     if (!cartFetchDone && !cachedWfId && !payload.wf_id) {
       pendingEvents.push(() => {
