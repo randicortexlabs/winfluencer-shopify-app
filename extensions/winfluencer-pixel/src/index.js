@@ -32,12 +32,32 @@ register(({ analytics, init, browser }) => {
   let ready = false;
   let pendingEvents = [];
 
+  /* ─── EXPIRATION CONSTANTS ─── */
+  const SESSION_TTL = 30 * 60 * 1000;        // 30 minutes of inactivity
+  const WF_ID_TTL = 90 * 24 * 60 * 60 * 1000; // 90 days attribution window
+
+  /* ─── HELPER: check if a stored timestamp has expired ─── */
+  function isExpired(storedTimestamp, ttl) {
+    if (!storedTimestamp) return true;
+    return (Date.now() - Number(storedTimestamp)) > ttl;
+  }
+
   /* ─── ASYNC INITIALIZATION ─── */
   async function initialize() {
-    // 1. Try browser.localStorage for wf_id (written by App Embed Block)
+
+    // ─── WF_ID (90-day expiry) ───
+
+    // 1. Try browser.localStorage for wf_id + check expiry
     try {
       const val = await browser.localStorage.getItem("wf_id");
-      if (val) cachedWfId = val;
+      const ts = await browser.localStorage.getItem("wf_id_ts");
+      if (val && !isExpired(ts, WF_ID_TTL)) {
+        cachedWfId = val;
+      } else if (val) {
+        // Expired — clear it
+        await browser.localStorage.removeItem("wf_id");
+        await browser.localStorage.removeItem("wf_id_ts");
+      }
     } catch (e) {}
 
     // 2. If not in localStorage, try init.data.cart.attributes
@@ -53,12 +73,19 @@ register(({ analytics, init, browser }) => {
       } catch (e) {}
     }
 
-    // ─── SESSION ID ───
+    // ─── SESSION ID (30-min inactivity expiry) ───
 
-    // 1. Try browser.localStorage for persisted session ID
+    // 1. Try browser.localStorage for persisted session ID + check expiry
     try {
       const val = await browser.localStorage.getItem("wf_session_id");
-      if (val) sessionId = val;
+      const ts = await browser.localStorage.getItem("wf_session_ts");
+      if (val && !isExpired(ts, SESSION_TTL)) {
+        sessionId = val;
+      } else if (val) {
+        // Expired — clear it so a new one is generated
+        await browser.localStorage.removeItem("wf_session_id");
+        await browser.localStorage.removeItem("wf_session_ts");
+      }
     } catch (e) {}
 
     // 2. Try cart token from init data
@@ -84,14 +111,15 @@ register(({ analytics, init, browser }) => {
       } catch (e) {}
     }
 
-    // 5. Generate random session ID as last resort + persist
+    // 5. Generate random session ID as last resort
     if (!sessionId) {
       sessionId = "wf_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 10);
     }
 
-    // Always persist sessionId so it stays consistent across page navigations
+    // Persist sessionId + update last-activity timestamp
     try {
       await browser.localStorage.setItem("wf_session_id", sessionId);
+      await browser.localStorage.setItem("wf_session_ts", String(Date.now()));
     } catch (e) {}
 
     // Mark ready and flush queued events
@@ -102,11 +130,14 @@ register(({ analytics, init, browser }) => {
 
   initialize();
 
-  /* ─── PERSIST WF_ID to sandbox localStorage ─── */
+  /* ─── PERSIST WF_ID to sandbox localStorage with timestamp ─── */
   function persistWfId(value) {
     if (!value) return;
     cachedWfId = value;
-    try { browser.localStorage.setItem("wf_id", value).catch(() => {}); } catch (e) {}
+    try {
+      browser.localStorage.setItem("wf_id", value).catch(() => {});
+      browser.localStorage.setItem("wf_id_ts", String(Date.now())).catch(() => {});
+    } catch (e) {}
   }
 
   /* ─── RESOLVE WF_ID: re-checks per-event sources ─── */
@@ -165,6 +196,12 @@ register(({ analytics, init, browser }) => {
     payload.session_id = sessionId || "";
     // Re-resolve wf_id in case it was found after initial queue
     if (!payload.wf_id && cachedWfId) payload.wf_id = cachedWfId;
+
+    // Update last-activity timestamp (resets the 30-min inactivity timer)
+    try {
+      browser.localStorage.setItem("wf_session_ts", String(Date.now())).catch(() => {});
+    } catch (e) {}
+
     fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
