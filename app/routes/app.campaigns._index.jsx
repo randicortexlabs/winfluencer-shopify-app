@@ -8,7 +8,6 @@ import {
   InlineStack,
   Layout,
   Page,
-  ProgressBar,
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -80,10 +79,6 @@ export default function CampaignsListPage() {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
               {campaigns.map((campaign) => {
-                const budgetPct = campaign.budget && campaign.budget > 0
-                  ? Math.min(Math.round((campaign.revenue / campaign.budget) * 100), 100)
-                  : null;
-
                 return (
                   <div
                     key={campaign.id}
@@ -129,20 +124,6 @@ export default function CampaignsListPage() {
                           </BlockStack>
                         </div>
 
-                        {/* Budget utilisation */}
-                        {budgetPct !== null && (
-                          <BlockStack gap="100">
-                            <InlineStack align="space-between">
-                              <Text as="p" tone="subdued" variant="bodySm">Budget utilisation</Text>
-                              <Text as="p" variant="bodySm" fontWeight="semibold">{budgetPct}%</Text>
-                            </InlineStack>
-                            <ProgressBar
-                              progress={budgetPct}
-                              tone={budgetPct >= 100 ? "success" : "primary"}
-                              size="small"
-                            />
-                          </BlockStack>
-                        )}
                       </BlockStack>
                     </Card>
                   </div>

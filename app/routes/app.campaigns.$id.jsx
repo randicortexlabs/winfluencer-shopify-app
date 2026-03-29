@@ -12,6 +12,7 @@ import {
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
 function formatCurrency(val) {
   return `$${Number(val || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -35,7 +36,7 @@ function statusTone(status) {
 export const loader = async ({ request, params }) => {
   const { authenticate } = await import("../shopify.server");
   const { default: db } = await import("../db.server");
-  const { getCampaignStats } = await import("../services/analytics.server");
+  const { getCampaignStats, getCampaignSankeyData, getProductIntelligence, computeSignal } = await import("../services/analytics.server");
 
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
@@ -53,7 +54,11 @@ export const loader = async ({ request, params }) => {
     throw new Response("Campaign not found", { status: 404 });
   }
 
-  const stats = await getCampaignStats(campaign.id);
+  const [stats, sankeyData, products] = await Promise.all([
+    getCampaignStats(campaign.id),
+    getCampaignSankeyData(campaign.id),
+    getProductIntelligence(store.id, { campaignId: campaign.id }),
+  ]);
 
   // Get per-influencer stats
   const influencerIds = campaign.influencers.map((i) => i.id);
@@ -111,11 +116,32 @@ export const loader = async ({ request, params }) => {
     };
   });
 
-  return { campaign, stats, influencers };
+  return { campaign, stats, influencers, sankeyData, products };
 };
 
+function SankeyNode({ x, y, width, height, index, payload }) {
+  const name = payload?.name || "";
+  const funnelStages = ["Page View", "Product View", "Add to Cart", "Checkout", "Purchase"];
+  const isStage = funnelStages.includes(name);
+  return (
+    <Layer key={`node-${index}`}>
+      <Rectangle x={x} y={y} width={width} height={height} fill={isStage ? "#9A3A15" : "#E8854A"} radius={2} />
+      <text x={x + width + 6} y={y + height / 2} textAnchor="start" dominantBaseline="central" fontSize={12} fill="#303030">
+        {name}
+      </text>
+    </Layer>
+  );
+}
+
+function signalTone(signal) {
+  if (signal === "Strong intent") return "success";
+  if (signal === "High convert") return "info";
+  if (signal === "Price friction") return "critical";
+  return undefined;
+}
+
 export default function CampaignDetailPage() {
-  const { campaign, stats, influencers } = useLoaderData();
+  const { campaign, stats, influencers, sankeyData, products } = useLoaderData();
   const navigate = useNavigate();
 
   const rows = influencers.map((inf) => [
@@ -136,9 +162,6 @@ export default function CampaignDetailPage() {
       backAction={{ url: "/app/campaigns" }}
       titleMetadata={<Badge tone={statusTone(campaign.status)}>{campaign.status}</Badge>}
       subtitle={`${formatDate(campaign.startDate)} \u2013 ${formatDate(campaign.endDate)} \u00B7 ${influencers.length} influencer${influencers.length !== 1 ? "s" : ""}`}
-      secondaryActions={[
-        { content: "Generate links", onAction: () => {} },
-      ]}
     >
       <ui-title-bar title={campaign.name}>
         <button onClick={() => navigate("/app/campaigns")}>Back</button>
@@ -203,6 +226,71 @@ export default function CampaignDetailPage() {
             </BlockStack>
           </Card>
         </Layout.Section>
+        {/* Campaign Journey Flow (Sankey) */}
+        {sankeyData.nodes.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text variant="headingSm" as="h2">Campaign journey flow</Text>
+                    <Text as="p" tone="subdued">
+                      How this campaign's influencer traffic flows through the funnel
+                    </Text>
+                  </BlockStack>
+                  <Badge tone="info">Multi-touch</Badge>
+                </InlineStack>
+                <Divider />
+                <div style={{ width: "100%", overflowX: "auto" }}>
+                  <Sankey
+                    width={800}
+                    height={350}
+                    data={sankeyData}
+                    node={<SankeyNode />}
+                    link={{ stroke: "#F1D5C5", strokeOpacity: 0.6 }}
+                    nodePadding={30}
+                    nodeWidth={10}
+                    margin={{ top: 10, right: 160, bottom: 10, left: 10 }}
+                  >
+                    <Tooltip />
+                  </Sankey>
+                </div>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+
+        {/* Product Intelligence */}
+        {products.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text variant="headingSm" as="h2">Product intelligence</Text>
+                    <Text as="p" tone="subdued">Cart intent vs confirmed purchase — per variant</Text>
+                  </BlockStack>
+                  <Badge>{products.length} products tracked</Badge>
+                </InlineStack>
+                <Divider />
+                <DataTable
+                  columnContentTypes={["text", "text", "numeric", "numeric", "numeric", "numeric", "numeric", "text"]}
+                  headings={["Product", "Variant", "Price", "Carted", "Purchased", "Cart\u2192Buy rate", "Revenue", "Signal"]}
+                  rows={products.map((p) => [
+                    p.productTitle,
+                    p.variantTitle,
+                    formatCurrency(p.price),
+                    String(p.carted),
+                    String(p.purchased),
+                    `${p.rate}%`,
+                    formatCurrency(p.revenue),
+                    p.signal,
+                  ])}
+                />
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
       </Layout>
     </Page>
   );

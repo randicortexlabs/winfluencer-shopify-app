@@ -530,6 +530,91 @@ export async function getSankeyData(storeId) {
   return { nodes, links };
 }
 
+// ─── Campaign-level Sankey data ─────────────────────────────────────────────
+
+export async function getCampaignSankeyData(campaignId) {
+  // Get influencer IDs for this campaign
+  const influencers = await db.influencer.findMany({
+    where: { campaignId },
+    select: { id: true },
+  });
+  const influencerIds = influencers.map((i) => i.id);
+  if (influencerIds.length === 0) return { nodes: [], links: [] };
+
+  const touchpoints = await db.touchpoint.findMany({
+    where: { influencerId: { in: influencerIds } },
+    include: { influencer: { select: { name: true } } },
+    orderBy: [{ sessionId: "asc" }, { touchIndex: "asc" }],
+  });
+
+  if (touchpoints.length === 0) return { nodes: [], links: [] };
+
+  const sessionIds = [...new Set(touchpoints.map((tp) => tp.sessionId))];
+
+  const sessionEvents = await db.event.groupBy({
+    by: ["sessionId", "eventType"],
+    where: {
+      sessionId: { in: sessionIds },
+      eventType: {
+        in: ["page_viewed", "product_viewed", "product_added_to_cart", "checkout_started", "checkout_completed"],
+      },
+    },
+    _count: true,
+  });
+
+  const stageOrder = ["page_viewed", "product_viewed", "product_added_to_cart", "checkout_started", "checkout_completed"];
+  const stageLabels = {
+    page_viewed: "Page View",
+    product_viewed: "Product View",
+    product_added_to_cart: "Add to Cart",
+    checkout_started: "Checkout",
+    checkout_completed: "Purchase",
+  };
+
+  const sessionMaxStage = {};
+  for (const se of sessionEvents) {
+    const idx = stageOrder.indexOf(se.eventType);
+    if (idx > (sessionMaxStage[se.sessionId] ?? -1)) {
+      sessionMaxStage[se.sessionId] = idx;
+    }
+  }
+
+  const sessionTouchpoints = {};
+  for (const tp of touchpoints) {
+    if (!sessionTouchpoints[tp.sessionId]) sessionTouchpoints[tp.sessionId] = [];
+    sessionTouchpoints[tp.sessionId].push(tp);
+  }
+
+  const nodeSet = new Set();
+  const linkMap = {};
+
+  for (const [sessionId, tps] of Object.entries(sessionTouchpoints)) {
+    const maxStageIdx = sessionMaxStage[sessionId];
+    if (maxStageIdx === undefined) continue;
+
+    const lastTouch = tps[tps.length - 1];
+    const influencerName = lastTouch.influencer?.name || lastTouch.wfId;
+    const stageName = stageLabels[stageOrder[maxStageIdx]];
+
+    nodeSet.add(influencerName);
+    nodeSet.add(stageName);
+
+    const key = `${influencerName}|${stageName}`;
+    linkMap[key] = (linkMap[key] || 0) + 1;
+  }
+
+  const nodes = Array.from(nodeSet).map((name) => ({ name }));
+  const nodeIndex = {};
+  nodes.forEach((n, i) => { nodeIndex[n.name] = i; });
+
+  const links = Object.entries(linkMap).map(([key, value]) => {
+    const [source, target] = key.split("|");
+    return { source: nodeIndex[source], target: nodeIndex[target], value };
+  });
+
+  return { nodes, links };
+}
+
 // ─── Influencer role breakdown ──────────────────────────────────────────────
 
 export async function getInfluencerRoleBreakdown(influencerId) {
