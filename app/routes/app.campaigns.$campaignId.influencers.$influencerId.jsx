@@ -29,7 +29,7 @@ function signalTone(signal) {
 export const loader = async ({ request, params }) => {
   const { authenticate } = await import("../shopify.server");
   const { default: db } = await import("../db.server");
-  const { getInfluencerStats, getProductIntelligence } = await import("../services/analytics.server");
+  const { getInfluencerStats, getProductIntelligence, getInfluencerRoleBreakdown, getRecentJourneys } = await import("../services/analytics.server");
 
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
@@ -46,9 +46,11 @@ export const loader = async ({ request, params }) => {
     throw new Response("Influencer not found", { status: 404 });
   }
 
-  const [stats, products] = await Promise.all([
+  const [stats, products, roleBreakdown, recentJourneys] = await Promise.all([
     getInfluencerStats(influencer.id),
     getProductIntelligence(store.id, { influencerId: influencer.id }),
+    getInfluencerRoleBreakdown(influencer.id),
+    getRecentJourneys(influencer.id, 10),
   ]);
 
   const frictionProducts = products.filter((p) => p.signal === "Price friction");
@@ -60,11 +62,13 @@ export const loader = async ({ request, params }) => {
     stats,
     products,
     frictionProducts,
+    roleBreakdown,
+    recentJourneys,
   };
 };
 
 export default function InfluencerDetailPage() {
-  const { influencer, campaignId, campaignName, stats, products, frictionProducts } =
+  const { influencer, campaignId, campaignName, stats, products, frictionProducts, roleBreakdown, recentJourneys } =
     useLoaderData();
   const navigate = useNavigate();
   const { funnel } = stats;
@@ -186,6 +190,86 @@ export default function InfluencerDetailPage() {
             </InlineStack>
           </Card>
         </Layout.Section>
+
+        {/* Journey Role Breakdown */}
+        {roleBreakdown.total > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text variant="headingSm" as="h2">Journey role</Text>
+                  <Badge tone="info">{roleBreakdown.total} journeys</Badge>
+                </InlineStack>
+                <Text as="p" tone="subdued">
+                  How often this influencer appears as the first, middle, or last touch in visitor journeys
+                </Text>
+                <Divider />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px", textAlign: "center" }}>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingLg" as="p" tone="warning">{roleBreakdown.introducerPct}%</Text>
+                    <Text as="p" fontWeight="semibold">Introducer</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">{roleBreakdown.introducer} sessions</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">Brought the visitor first time</Text>
+                  </BlockStack>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingLg" as="p">{roleBreakdown.influencerPct}%</Text>
+                    <Text as="p" fontWeight="semibold">Influencer</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">{roleBreakdown.influencer} sessions</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">Middle of the journey</Text>
+                  </BlockStack>
+                  <BlockStack gap="100" inlineAlign="center">
+                    <Text variant="headingLg" as="p" tone="success">{roleBreakdown.closerPct}%</Text>
+                    <Text as="p" fontWeight="semibold">Closer</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">{roleBreakdown.closer} sessions</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">Got the last click</Text>
+                  </BlockStack>
+                </div>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+
+        {/* Recent Visitor Journeys */}
+        {recentJourneys.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <Text variant="headingSm" as="h2">Recent visitor journeys</Text>
+                <Text as="p" tone="subdued">Multi-touch paths involving this influencer</Text>
+                <Divider />
+                <BlockStack gap="400">
+                  {recentJourneys.map((j) => (
+                    <div key={j.sessionId} style={{ padding: "8px 0", borderBottom: "1px solid #F1F2F3" }}>
+                      <InlineStack align="space-between" blockAlign="center">
+                        <InlineStack gap="200" wrap blockAlign="center">
+                          {j.touches.map((t, i) => (
+                            <span key={t.wfId} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              {i > 0 && <span style={{ color: "#8C9196", fontSize: "14px" }}>&rarr;</span>}
+                              <span style={{
+                                padding: "3px 10px",
+                                borderRadius: "12px",
+                                fontSize: "12px",
+                                fontWeight: t.isCurrentInfluencer ? 600 : 400,
+                                backgroundColor: t.isCurrentInfluencer ? "#FEF0EA" : "#F1F2F3",
+                                color: t.isCurrentInfluencer ? "#B8461A" : "#303030",
+                                border: t.isCurrentInfluencer ? "1px solid #E8854A" : "1px solid transparent",
+                              }}>
+                                {t.influencerName}
+                              </span>
+                            </span>
+                          ))}
+                        </InlineStack>
+                        <Badge tone={j.converted ? "success" : undefined}>
+                          {j.converted ? "Purchased" : "Browsed"}
+                        </Badge>
+                      </InlineStack>
+                    </div>
+                  ))}
+                </BlockStack>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
 
         {/* Funnel + Revenue breakdown */}
         <Layout.Section>

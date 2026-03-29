@@ -2,25 +2,20 @@ import { register } from "@shopify/web-pixels-extension";
 
 register(({ analytics, init, browser }) => {
   /**
-   * Winfluencer Custom Pixel
+   * Winfluencer Custom Pixel — Multi-Touch Journey Tracking
    *
-   * ARCHITECTURE: All events are queued until async initialization completes.
-   * This ensures wf_id and sessionId are resolved from localStorage BEFORE
-   * any events are sent. Without this, the async browser.localStorage calls
-   * would not resolve in time and events would be sent with empty values.
+   * ARCHITECTURE:
+   * - All events queued until async initialization completes
+   * - LAST-TOUCH attribution: new ?wf_id= always overrides the current one
+   * - Journey array tracks ALL influencer touches per visitor
+   * - Journey sent with every event for server-side Touchpoint creation
    *
-   * wf_id resolution (in priority order):
-   * 1. browser.localStorage "wf_id" (set by App Embed Block on storefront)
-   * 2. init.data.cart.attributes "wf_influencer_id"
-   * 3. URL parameter ?wf_id= from the page URL (per-event)
-   * 4. Event cart/checkout attributes (per-event)
-   *
-   * sessionId resolution:
-   * 1. browser.localStorage "wf_session_id" (persisted across pages)
-   * 2. init.data.cart.token
-   * 3. init.data.checkout.token
-   * 4. cart attributes "wf_session_id"
-   * 5. Generate random + persist to localStorage
+   * localStorage keys:
+   *   wf_id        — current (last-touch) influencer wfId
+   *   wf_id_ts     — timestamp for 90-day expiry
+   *   wf_session_id — session identifier
+   *   wf_session_ts — last activity timestamp (30-min inactivity expiry)
+   *   wf_journey   — JSON array of {wfId, ts} objects (multi-touch history)
    */
 
   const ENDPOINT = "https://winfluencer-shopify-app.vercel.app/api/events";
@@ -29,16 +24,17 @@ register(({ analytics, init, browser }) => {
   /* ─── STATE ─── */
   let cachedWfId = "";
   let sessionId = "";
+  let journey = [];   // [{wfId: string, ts: number}, ...]
   let ready = false;
   let pendingEvents = [];
 
   /* ─── EXPIRATION CONSTANTS ─── */
-  const SESSION_TTL = 30 * 60 * 1000;        // 30 minutes of inactivity
+  const SESSION_TTL = 30 * 60 * 1000;         // 30 minutes of inactivity
   const WF_ID_TTL = 90 * 24 * 60 * 60 * 1000; // 90 days attribution window
+  const MAX_JOURNEY = 20;                      // max touches to store
 
   /* ─── HELPER: check if a stored timestamp has expired ─── */
   function isExpired(storedTimestamp, ttl) {
-    // If no timestamp saved, treat as NOT expired (be safe, keep the value)
     if (!storedTimestamp) return false;
     return (Date.now() - Number(storedTimestamp)) > ttl;
   }
@@ -47,25 +43,21 @@ register(({ analytics, init, browser }) => {
   async function initialize() {
 
     // ─── WF_ID (90-day expiry) ───
-
-    // 1. Try browser.localStorage for wf_id + check expiry
     try {
       const val = await browser.localStorage.getItem("wf_id");
       const ts = await browser.localStorage.getItem("wf_id_ts");
       if (val && !isExpired(ts, WF_ID_TTL)) {
         cachedWfId = val;
-        // Ensure timestamp exists (fix missing ts from older saves)
         if (!ts) {
           await browser.localStorage.setItem("wf_id_ts", String(Date.now()));
         }
       } else if (val && isExpired(ts, WF_ID_TTL)) {
-        // Genuinely expired (has timestamp and it's > 90 days) — clear it
         await browser.localStorage.removeItem("wf_id");
         await browser.localStorage.removeItem("wf_id_ts");
       }
     } catch (e) {}
 
-    // 2. If not in localStorage, try init.data.cart.attributes
+    // If not in localStorage, try init.data.cart.attributes
     if (!cachedWfId) {
       try {
         const cartAttrs = init?.data?.cart?.attributes || [];
@@ -78,11 +70,10 @@ register(({ analytics, init, browser }) => {
       } catch (e) {}
     }
 
-    // 3. If wf_id was found from any source, persist it properly with await
+    // Persist wf_id if found
     if (cachedWfId) {
       try {
         await browser.localStorage.setItem("wf_id", cachedWfId);
-        // Only set timestamp if not already set (don't reset the 90-day clock)
         const existingTs = await browser.localStorage.getItem("wf_id_ts");
         if (!existingTs) {
           await browser.localStorage.setItem("wf_id_ts", String(Date.now()));
@@ -90,32 +81,43 @@ register(({ analytics, init, browser }) => {
       } catch (e) {}
     }
 
-    // ─── SESSION ID (30-min inactivity expiry) ───
+    // ─── JOURNEY (load from localStorage, filter expired) ───
+    try {
+      const raw = await browser.localStorage.getItem("wf_journey");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          journey = parsed.filter(t => t.wfId && !isExpired(t.ts, WF_ID_TTL));
+        }
+      }
+    } catch (e) {}
 
-    // 1. Try browser.localStorage for persisted session ID + check expiry
+    // Ensure current wf_id is in the journey
+    if (cachedWfId && !journey.find(t => t.wfId === cachedWfId)) {
+      journey.push({ wfId: cachedWfId, ts: Date.now() });
+      try {
+        await browser.localStorage.setItem("wf_journey", JSON.stringify(journey));
+      } catch (e) {}
+    }
+
+    // ─── SESSION ID (30-min inactivity expiry) ───
     try {
       const val = await browser.localStorage.getItem("wf_session_id");
       const ts = await browser.localStorage.getItem("wf_session_ts");
       if (val && !isExpired(ts, SESSION_TTL)) {
         sessionId = val;
       } else {
-        // Expired or missing — clear for fresh generation
         await browser.localStorage.removeItem("wf_session_id");
         await browser.localStorage.removeItem("wf_session_ts");
       }
     } catch (e) {}
 
-    // 2. Try cart token from init data
     if (!sessionId) {
       try { sessionId = init?.data?.cart?.token || ""; } catch (e) {}
     }
-
-    // 3. Try checkout token
     if (!sessionId) {
       try { sessionId = init?.data?.checkout?.token || ""; } catch (e) {}
     }
-
-    // 4. Try wf_session_id from cart attributes
     if (!sessionId) {
       try {
         const cartAttrs = init?.data?.cart?.attributes || [];
@@ -127,13 +129,10 @@ register(({ analytics, init, browser }) => {
         }
       } catch (e) {}
     }
-
-    // 5. Generate random session ID as last resort
     if (!sessionId) {
       sessionId = "wf_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 10);
     }
 
-    // Persist sessionId + update last-activity timestamp (awaited!)
     try {
       await browser.localStorage.setItem("wf_session_id", sessionId);
       await browser.localStorage.setItem("wf_session_ts", String(Date.now()));
@@ -147,38 +146,52 @@ register(({ analytics, init, browser }) => {
 
   initialize();
 
-  /* ─── PERSIST WF_ID to sandbox localStorage with timestamp ─── */
+  /* ─── PERSIST WF_ID (last-touch) + append to journey ─── */
   async function persistWfId(value) {
     if (!value) return;
+    const now = Date.now();
     cachedWfId = value;
+
+    // Last-touch: always overwrite wf_id
     try {
       await browser.localStorage.setItem("wf_id", value);
-      // Only set timestamp if not already set (don't reset the 90-day clock on every page)
-      const existingTs = await browser.localStorage.getItem("wf_id_ts");
-      if (!existingTs) {
-        await browser.localStorage.setItem("wf_id_ts", String(Date.now()));
+      await browser.localStorage.setItem("wf_id_ts", String(now));
+    } catch (e) {}
+
+    // Append to journey (deduplicate by wfId)
+    if (!journey.find(t => t.wfId === value)) {
+      journey.push({ wfId: value, ts: now });
+      // Cap at MAX_JOURNEY entries
+      if (journey.length > MAX_JOURNEY) {
+        journey = journey.slice(-MAX_JOURNEY);
       }
+    }
+
+    // Persist journey
+    try {
+      await browser.localStorage.setItem("wf_journey", JSON.stringify(journey));
     } catch (e) {}
   }
 
-  /* ─── RESOLVE WF_ID: re-checks per-event sources ─── */
+  /* ─── RESOLVE WF_ID: LAST-TOUCH — always check URL first ─── */
   function resolveWfId(event) {
-    if (cachedWfId) return cachedWfId;
-
-    // Try URL parameter ?wf_id=
+    // ALWAYS check URL for new wf_id (last-touch override)
     try {
       const href = event?.context?.document?.location?.href || "";
       if (href.includes("wf_id=")) {
         const url = new URL(href);
         const fromUrl = url.searchParams.get("wf_id");
-        if (fromUrl) {
-          persistWfId(fromUrl);
-          return cachedWfId;
+        if (fromUrl && fromUrl !== cachedWfId) {
+          persistWfId(fromUrl); // updates cachedWfId + appends to journey
+        } else if (fromUrl) {
+          cachedWfId = fromUrl; // same wf_id, just ensure cached
         }
       }
     } catch (e) {}
 
-    // Try cart attributes from event data
+    if (cachedWfId) return cachedWfId;
+
+    // Fallback: cart attributes
     try {
       const cartAttrs = event?.data?.cart?.attributes || [];
       for (const attr of cartAttrs) {
@@ -189,7 +202,7 @@ register(({ analytics, init, browser }) => {
       if (cachedWfId) return cachedWfId;
     } catch (e) {}
 
-    // Try checkout attributes
+    // Fallback: checkout attributes
     try {
       const attrs = event?.data?.checkout?.attributes || [];
       for (const attr of attrs) {
@@ -215,10 +228,14 @@ register(({ analytics, init, browser }) => {
   function doSend(payload) {
     payload.shop = shopDomain;
     payload.session_id = sessionId || "";
-    // Re-resolve wf_id in case it was found after initial queue
     if (!payload.wf_id && cachedWfId) payload.wf_id = cachedWfId;
 
-    // Update last-activity timestamp (resets the 30-min inactivity timer)
+    // Attach journey for multi-touch tracking
+    if (journey.length > 0) {
+      payload.journey = journey;
+    }
+
+    // Update last-activity timestamp (resets 30-min inactivity timer)
     try {
       browser.localStorage.setItem("wf_session_ts", String(Date.now())).catch(() => {});
     } catch (e) {}

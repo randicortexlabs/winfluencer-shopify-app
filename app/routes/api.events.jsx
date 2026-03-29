@@ -46,6 +46,7 @@ export async function action({ request }) {
       items,
       transaction_id,
       session_id,
+      journey,  // optional: [{wfId, ts}, ...] for multi-touch tracking
     } = body;
 
     /**
@@ -144,12 +145,58 @@ export async function action({ request }) {
       await db.event.createMany({ data: itemEvents });
     }
 
+    // Create/update Touchpoint records from journey array (multi-touch tracking)
+    if (journey && Array.isArray(journey) && journey.length > 0 && session_id) {
+      try {
+        // Batch lookup all influencerIds for wfIds in the journey
+        const journeyWfIds = journey.map(t => String(t.wfId || "")).filter(Boolean);
+        const influencers = await db.influencer.findMany({
+          where: { wfId: { in: journeyWfIds } },
+          select: { id: true, wfId: true },
+        });
+        const wfIdToInfluencerId = {};
+        for (const inf of influencers) {
+          wfIdToInfluencerId[inf.wfId] = inf.id;
+        }
+
+        // Upsert each touchpoint (idempotent via @@unique([sessionId, wfId]))
+        for (let i = 0; i < journey.length; i++) {
+          const touch = journey[i];
+          const touchWfId = String(touch.wfId || "");
+          if (!touchWfId) continue;
+
+          await db.touchpoint.upsert({
+            where: {
+              sessionId_wfId: {
+                sessionId: String(session_id),
+                wfId: touchWfId,
+              },
+            },
+            create: {
+              storeId: store.id,
+              sessionId: String(session_id),
+              wfId: touchWfId,
+              influencerId: wfIdToInfluencerId[touchWfId] || null,
+              touchIndex: i,
+              timestamp: touch.ts ? new Date(touch.ts) : new Date(),
+            },
+            update: {
+              touchIndex: i,
+            },
+          });
+        }
+      } catch (touchErr) {
+        console.error("[api.events] Touchpoint creation failed:", touchErr);
+      }
+    }
+
     console.log(
       "[api.events] Saved:",
       event_type,
       "wf_id:", wf_id || "none",
       "store:", store.shop,
       "product:", product_title || "n/a",
+      "journey:", journey ? journey.length + " touches" : "none",
     );
 
     return corsJson({ ok: true, saved: true });

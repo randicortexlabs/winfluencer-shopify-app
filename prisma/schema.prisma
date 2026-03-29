@@ -38,6 +38,7 @@ model Store {
   events      Event[]
   orders      Order[]
   teamMembers TeamMember[]
+  touchpoints Touchpoint[]
 }
 
 model Campaign {
@@ -66,6 +67,7 @@ model Influencer {
   createdAt    DateTime @default(now())
   events       Event[]
   orders       Order[]
+  touchpoints  Touchpoint[]
 }
 
 model Event {
@@ -118,4 +120,22 @@ model TeamMember {
   acceptedAt DateTime?
 
   @@unique([storeId, email])
+}
+
+model Touchpoint {
+  id            String      @id @default(cuid())
+  storeId       String
+  store         Store       @relation(fields: [storeId], references: [id])
+  sessionId     String
+  wfId          String
+  influencerId  String?
+  influencer    Influencer? @relation(fields: [influencerId], references: [id])
+  touchIndex    Int
+  timestamp     DateTime
+  createdAt     DateTime    @default(now())
+
+  @@unique([sessionId, wfId])
+  @@index([storeId, sessionId])
+  @@index([influencerId])
+  @@index([sessionId, touchIndex])
 }

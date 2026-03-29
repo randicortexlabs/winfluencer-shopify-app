@@ -12,6 +12,7 @@ import {
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { Sankey, Tooltip, Layer, Rectangle, Text as RText } from "recharts";
 
 export const loader = async ({ request }) => {
   const { authenticate } = await import("../shopify.server");
@@ -23,6 +24,7 @@ export const loader = async ({ request }) => {
     getTopInfluencers,
     getInfluencerComparison,
     getTopProduct,
+    getSankeyData,
   } = await import("../services/analytics.server");
 
   const { session } = await authenticate.admin(request);
@@ -78,14 +80,15 @@ export const loader = async ({ request }) => {
 
   if (!store) throw new Response("Store not available", { status: 500 });
 
-  const [metrics, topInfluencers, allInfluencers, topProduct] = await Promise.all([
+  const [metrics, topInfluencers, allInfluencers, topProduct, sankeyData] = await Promise.all([
     getStoreOverviewMetrics(store.id),
     getTopInfluencers(store.id, 5),
     getInfluencerComparison(store.id),
     getTopProduct(store.id),
+    getSankeyData(store.id),
   ]);
 
-  return { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct };
+  return { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct, sankeyData };
 };
 
 function formatCurrency(val) {
@@ -100,8 +103,22 @@ function platformTone(platform) {
   return "new";
 }
 
+function SankeyNode({ x, y, width, height, index, payload }) {
+  const name = payload?.name || "";
+  const funnelStages = ["Page View", "Product View", "Add to Cart", "Checkout", "Purchase"];
+  const isStage = funnelStages.includes(name);
+  return (
+    <Layer key={`node-${index}`}>
+      <Rectangle x={x} y={y} width={width} height={height} fill={isStage ? "#9A3A15" : "#E8854A"} radius={2} />
+      <text x={x + width + 6} y={y + height / 2} textAnchor="start" dominantBaseline="central" fontSize={12} fill="#303030">
+        {name}
+      </text>
+    </Layer>
+  );
+}
+
 export default function DashboardPage() {
-  const { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct } = useLoaderData();
+  const { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct, sankeyData } = useLoaderData();
   const navigate = useNavigate();
   const { funnel } = metrics;
 
@@ -284,6 +301,40 @@ export default function DashboardPage() {
             </Layout.Section>
           </Layout>
         </Layout.Section>
+
+        {/* Influencer journey flow (Sankey) */}
+        {sankeyData.nodes.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text variant="headingSm" as="h2">Influencer journey flow</Text>
+                    <Text as="p" tone="subdued">
+                      How influencer traffic flows through your funnel (last-touch attribution)
+                    </Text>
+                  </BlockStack>
+                  <Badge tone="info">Multi-touch</Badge>
+                </InlineStack>
+                <Divider />
+                <div style={{ width: "100%", overflowX: "auto" }}>
+                  <Sankey
+                    width={800}
+                    height={350}
+                    data={sankeyData}
+                    node={<SankeyNode />}
+                    link={{ stroke: "#F1D5C5", strokeOpacity: 0.6 }}
+                    nodePadding={30}
+                    nodeWidth={10}
+                    margin={{ top: 10, right: 160, bottom: 10, left: 10 }}
+                  >
+                    <Tooltip />
+                  </Sankey>
+                </div>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
 
         {/* Influencer comparison table */}
         <Layout.Section>

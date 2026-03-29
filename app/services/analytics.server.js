@@ -450,3 +450,179 @@ export async function getEnrichedCampaigns(storeId) {
 
   return enriched;
 }
+
+// ─── Sankey diagram data ────────────────────────────────────────────────────
+
+export async function getSankeyData(storeId) {
+  const touchpoints = await db.touchpoint.findMany({
+    where: { storeId },
+    include: { influencer: { select: { name: true } } },
+    orderBy: [{ sessionId: "asc" }, { touchIndex: "asc" }],
+  });
+
+  if (touchpoints.length === 0) return { nodes: [], links: [] };
+
+  // Get deepest funnel stage per session
+  const sessionEvents = await db.event.groupBy({
+    by: ["sessionId", "eventType"],
+    where: {
+      storeId,
+      sessionId: { not: "" },
+      eventType: {
+        in: ["page_viewed", "product_viewed", "product_added_to_cart", "checkout_started", "checkout_completed"],
+      },
+    },
+    _count: true,
+  });
+
+  const stageOrder = ["page_viewed", "product_viewed", "product_added_to_cart", "checkout_started", "checkout_completed"];
+  const stageLabels = {
+    page_viewed: "Page View",
+    product_viewed: "Product View",
+    product_added_to_cart: "Add to Cart",
+    checkout_started: "Checkout",
+    checkout_completed: "Purchase",
+  };
+
+  const sessionMaxStage = {};
+  for (const se of sessionEvents) {
+    const idx = stageOrder.indexOf(se.eventType);
+    if (idx > (sessionMaxStage[se.sessionId] ?? -1)) {
+      sessionMaxStage[se.sessionId] = idx;
+    }
+  }
+
+  // Group touchpoints by session
+  const sessionTouchpoints = {};
+  for (const tp of touchpoints) {
+    if (!sessionTouchpoints[tp.sessionId]) sessionTouchpoints[tp.sessionId] = [];
+    sessionTouchpoints[tp.sessionId].push(tp);
+  }
+
+  // Build links: last-touch influencer → deepest funnel stage
+  const nodeSet = new Set();
+  const linkMap = {};
+
+  for (const [sessionId, tps] of Object.entries(sessionTouchpoints)) {
+    const maxStageIdx = sessionMaxStage[sessionId];
+    if (maxStageIdx === undefined) continue;
+
+    const lastTouch = tps[tps.length - 1];
+    const influencerName = lastTouch.influencer?.name || lastTouch.wfId;
+    const stageName = stageLabels[stageOrder[maxStageIdx]];
+
+    nodeSet.add(influencerName);
+    nodeSet.add(stageName);
+
+    const key = `${influencerName}|${stageName}`;
+    linkMap[key] = (linkMap[key] || 0) + 1;
+  }
+
+  const nodes = Array.from(nodeSet).map((name) => ({ name }));
+  const nodeIndex = {};
+  nodes.forEach((n, i) => { nodeIndex[n.name] = i; });
+
+  const links = Object.entries(linkMap).map(([key, value]) => {
+    const [source, target] = key.split("|");
+    return { source: nodeIndex[source], target: nodeIndex[target], value };
+  });
+
+  return { nodes, links };
+}
+
+// ─── Influencer role breakdown ──────────────────────────────────────────────
+
+export async function getInfluencerRoleBreakdown(influencerId) {
+  const touchpoints = await db.touchpoint.findMany({
+    where: { influencerId },
+    select: { sessionId: true, touchIndex: true },
+  });
+
+  if (touchpoints.length === 0) {
+    return { introducer: 0, influencer: 0, closer: 0, total: 0, introducerPct: 0, influencerPct: 0, closerPct: 0 };
+  }
+
+  const sessionIds = [...new Set(touchpoints.map((tp) => tp.sessionId))];
+  const allTouchpoints = await db.touchpoint.findMany({
+    where: { sessionId: { in: sessionIds } },
+    select: { sessionId: true, touchIndex: true },
+  });
+
+  const sessionMaxIndex = {};
+  for (const tp of allTouchpoints) {
+    sessionMaxIndex[tp.sessionId] = Math.max(sessionMaxIndex[tp.sessionId] ?? 0, tp.touchIndex);
+  }
+
+  let introducer = 0;
+  let closer = 0;
+  let influencerMid = 0;
+
+  for (const tp of touchpoints) {
+    const maxIdx = sessionMaxIndex[tp.sessionId] ?? 0;
+    if (tp.touchIndex === 0) {
+      introducer++;
+    } else if (tp.touchIndex === maxIdx) {
+      closer++;
+    } else {
+      influencerMid++;
+    }
+  }
+
+  const total = touchpoints.length;
+  return {
+    introducer,
+    influencer: influencerMid,
+    closer,
+    total,
+    introducerPct: total > 0 ? Math.round((introducer / total) * 100) : 0,
+    influencerPct: total > 0 ? Math.round((influencerMid / total) * 100) : 0,
+    closerPct: total > 0 ? Math.round((closer / total) * 100) : 0,
+  };
+}
+
+// ─── Recent visitor journeys for an influencer ──────────────────────────────
+
+export async function getRecentJourneys(influencerId, limit = 10) {
+  const touchpoints = await db.touchpoint.findMany({
+    where: { influencerId },
+    orderBy: { timestamp: "desc" },
+    take: limit,
+    select: { sessionId: true },
+  });
+
+  if (touchpoints.length === 0) return [];
+
+  const sessionIds = [...new Set(touchpoints.map((tp) => tp.sessionId))];
+
+  const [allTouchpoints, conversionEvents] = await Promise.all([
+    db.touchpoint.findMany({
+      where: { sessionId: { in: sessionIds } },
+      include: { influencer: { select: { name: true, id: true } } },
+      orderBy: [{ sessionId: "asc" }, { touchIndex: "asc" }],
+    }),
+    db.event.findMany({
+      where: { sessionId: { in: sessionIds }, eventType: "checkout_completed" },
+      select: { sessionId: true },
+      distinct: ["sessionId"],
+    }),
+  ]);
+
+  const convertedSessions = new Set(conversionEvents.map((e) => e.sessionId));
+
+  const journeyMap = {};
+  for (const tp of allTouchpoints) {
+    if (!journeyMap[tp.sessionId]) journeyMap[tp.sessionId] = [];
+    journeyMap[tp.sessionId].push({
+      wfId: tp.wfId,
+      influencerName: tp.influencer?.name || tp.wfId,
+      touchIndex: tp.touchIndex,
+      isCurrentInfluencer: tp.influencer?.id === influencerId,
+    });
+  }
+
+  return sessionIds.map((sid) => ({
+    sessionId: sid,
+    converted: convertedSessions.has(sid),
+    touches: journeyMap[sid] || [],
+  }));
+}
