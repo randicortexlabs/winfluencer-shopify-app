@@ -144,17 +144,6 @@ export default function CampaignDetailPage() {
   const { campaign, stats, influencers, sankeyData, products } = useLoaderData();
   const navigate = useNavigate();
 
-  const rows = influencers.map((inf) => [
-    inf.name,
-    `?wf_id=${inf.wfId}`,
-    String(inf.visitors),
-    `${inf.cart} (${inf.cartPct}%)`,
-    `${inf.purchases} (${inf.purchasePct}%)`,
-    `${inf.convRate}%`,
-    formatCurrency(inf.revenue),
-    formatCurrency(inf.aov),
-    "View →",
-  ]);
 
   return (
     <Page
@@ -212,17 +201,37 @@ export default function CampaignDetailPage() {
                 <Badge tone="attention">{influencers.length} influencers</Badge>
               </InlineStack>
               <Divider />
-              <DataTable
-                columnContentTypes={[
-                  "text", "text", "numeric", "text", "text",
-                  "numeric", "numeric", "numeric", "text",
-                ]}
-                headings={[
-                  "Influencer", "Tracking link", "Visitors", "\u2192 Cart",
-                  "\u2192 Purchase", "Conv. rate", "Revenue", "AOV", "",
-                ]}
-                rows={rows}
-              />
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #E1E3E5" }}>
+                      {["Influencer", "Tracking link", "Visitors", "\u2192 Cart", "\u2192 Purchase", "Conv. rate", "Revenue", "AOV"].map((h) => (
+                        <th key={h} style={{ padding: "10px 12px", textAlign: h === "Influencer" || h === "Tracking link" ? "left" : "right", fontSize: "13px", fontWeight: 600, color: "#6D7175" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {influencers.map((inf) => (
+                      <tr
+                        key={inf.id}
+                        onClick={() => navigate(`/app/campaigns/${campaign.id}/influencers/${inf.id}`)}
+                        style={{ borderBottom: "1px solid #F1F2F3", cursor: "pointer" }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#FEF0EA"}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                      >
+                        <td style={{ padding: "10px 12px", fontWeight: 500 }}>{inf.name}</td>
+                        <td style={{ padding: "10px 12px", color: "#6D7175", fontSize: "13px" }}>?wf_id={inf.wfId}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.visitors}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.cart} ({inf.cartPct}%)</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.purchases} ({inf.purchasePct}%)</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.convRate}%</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.revenue)}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.aov)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </BlockStack>
           </Card>
         </Layout.Section>
