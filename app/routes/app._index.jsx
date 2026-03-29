@@ -4,13 +4,11 @@ import {
   BlockStack,
   Button,
   Card,
-  DataTable,
   Divider,
   EmptyState,
   InlineStack,
   Layout,
   Page,
-  ProgressBar,
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -108,11 +106,11 @@ export default function DashboardPage() {
   const { funnel } = metrics;
 
   const funnelStages = [
-    { label: "Visitors", value: funnel.visitors, tone: "highlight" },
-    { label: "Product views", value: funnel.productViews, tone: "highlight" },
-    { label: "Add to cart", value: funnel.addToCart, tone: "primary" },
-    { label: "Checkout", value: funnel.checkoutStarted, tone: "primary" },
-    { label: "Purchased", value: funnel.purchased, tone: "success" },
+    { label: "Visitors", value: funnel.visitors, color: "#E8854A" },
+    { label: "Product views", value: funnel.productViews, color: "#D4692E" },
+    { label: "Add to cart", value: funnel.addToCart, color: "#B8461A" },
+    { label: "Checkout", value: funnel.checkoutStarted, color: "#9A3A15" },
+    { label: "Purchased", value: funnel.purchased, color: "#7D2E10" },
   ];
   const maxFunnel = Math.max(...funnelStages.map((s) => s.value), 1);
   const totalVisitors = funnel.visitors || 0;
@@ -127,7 +125,7 @@ export default function DashboardPage() {
     `${inf.convRate}%`,
     formatCurrency(inf.revenue),
     formatCurrency(inf.aov),
-    inf.purchases > 0 ? "Active" : "Inactive",
+    inf.visitors > 0 ? "Active" : "Inactive",
   ]);
 
   return (
@@ -232,10 +230,15 @@ export default function DashboardPage() {
                               <Text as="p" tone="subdued">{pct}%</Text>
                             </InlineStack>
                           </InlineStack>
-                          <ProgressBar
-                            progress={Math.round((stage.value / maxFunnel) * 100)}
-                            tone={stage.tone}
-                          />
+                          <div style={{ width: "100%", height: "8px", borderRadius: "4px", backgroundColor: "#F1F2F3" }}>
+                            <div style={{
+                              width: `${Math.round((stage.value / maxFunnel) * 100)}%`,
+                              height: "100%",
+                              borderRadius: "4px",
+                              backgroundColor: stage.color,
+                              transition: "width 0.3s ease",
+                            }} />
+                          </div>
                         </BlockStack>
                       );
                     })}
@@ -308,17 +311,49 @@ export default function DashboardPage() {
                   </div>
                 </EmptyState>
               ) : (
-                <DataTable
-                  columnContentTypes={[
-                    "text", "text", "numeric", "numeric", "numeric",
-                    "numeric", "numeric", "numeric", "text",
-                  ]}
-                  headings={[
-                    "Influencer", "Platform", "Visitors", "Add to cart",
-                    "Purchases", "Conv. rate", "Revenue", "AOV", "Status",
-                  ]}
-                  rows={comparisonRows}
-                />
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid #E1E3E5" }}>
+                        {["Influencer", "Platform", "Visitors", "Add to cart", "Purchases", "Conv. rate", "Revenue", "AOV", "Status"].map((h) => (
+                          <th key={h} style={{ padding: "10px 12px", textAlign: h === "Influencer" || h === "Platform" || h === "Status" ? "left" : "right", fontSize: "13px", fontWeight: 600, color: "#6D7175" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allInfluencers.map((inf) => (
+                        <tr
+                          key={inf.id}
+                          onClick={() => navigate(`/app/campaigns/${inf.campaignId}/influencers/${inf.id}`)}
+                          style={{ borderBottom: "1px solid #F1F2F3", cursor: "pointer" }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#FEF0EA"}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                        >
+                          <td style={{ padding: "10px 12px", fontWeight: 500 }}>{inf.name}</td>
+                          <td style={{ padding: "10px 12px" }}>{inf.platform}</td>
+                          <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.visitors}</td>
+                          <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.addToCart}</td>
+                          <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.purchases}</td>
+                          <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.convRate}%</td>
+                          <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.revenue)}</td>
+                          <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.aov)}</td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <span style={{
+                              padding: "2px 8px",
+                              borderRadius: "10px",
+                              fontSize: "12px",
+                              fontWeight: 500,
+                              backgroundColor: inf.visitors > 0 ? "#D1FAE5" : "#F1F2F3",
+                              color: inf.visitors > 0 ? "#065F46" : "#6D7175",
+                            }}>
+                              {inf.visitors > 0 ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </BlockStack>
           </Card>
