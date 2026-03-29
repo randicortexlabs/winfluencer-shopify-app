@@ -38,7 +38,8 @@ register(({ analytics, init, browser }) => {
 
   /* ─── HELPER: check if a stored timestamp has expired ─── */
   function isExpired(storedTimestamp, ttl) {
-    if (!storedTimestamp) return true;
+    // If no timestamp saved, treat as NOT expired (be safe, keep the value)
+    if (!storedTimestamp) return false;
     return (Date.now() - Number(storedTimestamp)) > ttl;
   }
 
@@ -53,8 +54,12 @@ register(({ analytics, init, browser }) => {
       const ts = await browser.localStorage.getItem("wf_id_ts");
       if (val && !isExpired(ts, WF_ID_TTL)) {
         cachedWfId = val;
-      } else if (val) {
-        // Expired — clear it
+        // Ensure timestamp exists (fix missing ts from older saves)
+        if (!ts) {
+          await browser.localStorage.setItem("wf_id_ts", String(Date.now()));
+        }
+      } else if (val && isExpired(ts, WF_ID_TTL)) {
+        // Genuinely expired (has timestamp and it's > 90 days) — clear it
         await browser.localStorage.removeItem("wf_id");
         await browser.localStorage.removeItem("wf_id_ts");
       }
@@ -73,6 +78,18 @@ register(({ analytics, init, browser }) => {
       } catch (e) {}
     }
 
+    // 3. If wf_id was found from any source, persist it properly with await
+    if (cachedWfId) {
+      try {
+        await browser.localStorage.setItem("wf_id", cachedWfId);
+        // Only set timestamp if not already set (don't reset the 90-day clock)
+        const existingTs = await browser.localStorage.getItem("wf_id_ts");
+        if (!existingTs) {
+          await browser.localStorage.setItem("wf_id_ts", String(Date.now()));
+        }
+      } catch (e) {}
+    }
+
     // ─── SESSION ID (30-min inactivity expiry) ───
 
     // 1. Try browser.localStorage for persisted session ID + check expiry
@@ -81,8 +98,8 @@ register(({ analytics, init, browser }) => {
       const ts = await browser.localStorage.getItem("wf_session_ts");
       if (val && !isExpired(ts, SESSION_TTL)) {
         sessionId = val;
-      } else if (val) {
-        // Expired — clear it so a new one is generated
+      } else {
+        // Expired or missing — clear for fresh generation
         await browser.localStorage.removeItem("wf_session_id");
         await browser.localStorage.removeItem("wf_session_ts");
       }
@@ -116,7 +133,7 @@ register(({ analytics, init, browser }) => {
       sessionId = "wf_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 10);
     }
 
-    // Persist sessionId + update last-activity timestamp
+    // Persist sessionId + update last-activity timestamp (awaited!)
     try {
       await browser.localStorage.setItem("wf_session_id", sessionId);
       await browser.localStorage.setItem("wf_session_ts", String(Date.now()));
@@ -131,12 +148,16 @@ register(({ analytics, init, browser }) => {
   initialize();
 
   /* ─── PERSIST WF_ID to sandbox localStorage with timestamp ─── */
-  function persistWfId(value) {
+  async function persistWfId(value) {
     if (!value) return;
     cachedWfId = value;
     try {
-      browser.localStorage.setItem("wf_id", value).catch(() => {});
-      browser.localStorage.setItem("wf_id_ts", String(Date.now())).catch(() => {});
+      await browser.localStorage.setItem("wf_id", value);
+      // Only set timestamp if not already set (don't reset the 90-day clock on every page)
+      const existingTs = await browser.localStorage.getItem("wf_id_ts");
+      if (!existingTs) {
+        await browser.localStorage.setItem("wf_id_ts", String(Date.now()));
+      }
     } catch (e) {}
   }
 
