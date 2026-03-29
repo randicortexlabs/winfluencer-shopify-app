@@ -102,6 +102,13 @@ register(({ analytics, init, browser }) => {
 
   initialize();
 
+  /* ─── PERSIST WF_ID to sandbox localStorage ─── */
+  function persistWfId(value) {
+    if (!value) return;
+    cachedWfId = value;
+    try { browser.localStorage.setItem("wf_id", value).catch(() => {}); } catch (e) {}
+  }
+
   /* ─── RESOLVE WF_ID: re-checks per-event sources ─── */
   function resolveWfId(event) {
     if (cachedWfId) return cachedWfId;
@@ -113,7 +120,7 @@ register(({ analytics, init, browser }) => {
         const url = new URL(href);
         const fromUrl = url.searchParams.get("wf_id");
         if (fromUrl) {
-          cachedWfId = fromUrl;
+          persistWfId(fromUrl);
           return cachedWfId;
         }
       }
@@ -124,7 +131,7 @@ register(({ analytics, init, browser }) => {
       const cartAttrs = event?.data?.cart?.attributes || [];
       for (const attr of cartAttrs) {
         if (attr.key === "wf_influencer_id" && attr.value) {
-          cachedWfId = attr.value;
+          persistWfId(attr.value);
         }
       }
       if (cachedWfId) return cachedWfId;
@@ -135,7 +142,7 @@ register(({ analytics, init, browser }) => {
       const attrs = event?.data?.checkout?.attributes || [];
       for (const attr of attrs) {
         if (attr.key === "wf_influencer_id" && attr.value) {
-          cachedWfId = attr.value;
+          persistWfId(attr.value);
           return cachedWfId;
         }
       }
