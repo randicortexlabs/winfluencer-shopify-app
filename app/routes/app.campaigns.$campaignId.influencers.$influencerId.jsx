@@ -123,7 +123,7 @@ export default function InfluencerDetailPage() {
       <Layout>
         {/* Stats row */}
         <Layout.Section>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "14px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "14px" }}>
             <Card>
               <BlockStack gap="100">
                 <Text as="p" tone="subdued" variant="bodySm">Revenue</Text>
@@ -152,6 +152,12 @@ export default function InfluencerDetailPage() {
               <BlockStack gap="100">
                 <Text as="p" tone="subdued" variant="bodySm">Visitors</Text>
                 <Text variant="headingLg" as="p">{stats.visitors.toLocaleString()}</Text>
+              </BlockStack>
+            </Card>
+            <Card>
+              <BlockStack gap="100">
+                <Text as="p" tone="subdued" variant="bodySm">Unique Visitors</Text>
+                <Text variant="headingLg" as="p" tone="success">{stats.uniqueVisitors.toLocaleString()}</Text>
               </BlockStack>
             </Card>
           </div>

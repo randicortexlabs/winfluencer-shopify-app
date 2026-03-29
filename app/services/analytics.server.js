@@ -41,13 +41,22 @@ export async function getStoreFunnelCounts(storeId) {
 }
 
 export async function getInfluencerFunnelCounts(influencerId) {
-  const [eventGroups, orderCount] = await Promise.all([
+  const [eventGroups, orderCount, uniqueSessions] = await Promise.all([
     db.event.groupBy({
       by: ["eventType"],
       where: { influencerId },
       _count: true,
     }),
     db.order.count({ where: { influencerId } }),
+    db.event.findMany({
+      where: {
+        influencerId,
+        eventType: { in: ["page_viewed", "pageview"] },
+        sessionId: { not: "" },
+      },
+      select: { sessionId: true },
+      distinct: ["sessionId"],
+    }),
   ]);
 
   const counts = {};
@@ -57,6 +66,7 @@ export async function getInfluencerFunnelCounts(influencerId) {
 
   return {
     visitors: (counts["page_viewed"] || 0) + (counts["pageview"] || 0),
+    uniqueVisitors: uniqueSessions.length,
     productViews: counts["product_viewed"] || 0,
     addToCart: counts["product_added_to_cart"] || 0,
     checkoutStarted: counts["checkout_started"] || 0,
@@ -257,6 +267,7 @@ export async function getInfluencerStats(influencerId) {
     convRate: parseFloat(convRate),
     aov: parseFloat(aov),
     visitors: funnel.visitors,
+    uniqueVisitors: funnel.uniqueVisitors || 0,
     funnel,
   };
 }
