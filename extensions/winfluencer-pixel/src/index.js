@@ -3,52 +3,110 @@ import { register } from "@shopify/web-pixels-extension";
 register(({ analytics, init, browser }) => {
   /**
    * Winfluencer Custom Pixel
-   * Subscribes to ALL Shopify Customer Events and sends data to our API.
-   * Uses ABSOLUTE URL to avoid sandbox routing issues.
    *
-   * wf_id resolution strategy (in priority order):
-   * 1. Cached value (already found in a previous event)
-   * 2. URL parameter ?wf_id= from the page URL
-   * 3. Cart attributes from the event data
-   * 4. Checkout attributes from the event data
-   * 5. Init cart attributes (loaded at pixel startup)
+   * ARCHITECTURE: All events are queued until async initialization completes.
+   * This ensures wf_id and sessionId are resolved from localStorage BEFORE
+   * any events are sent. Without this, the async browser.localStorage calls
+   * would not resolve in time and events would be sent with empty values.
+   *
+   * wf_id resolution (in priority order):
+   * 1. browser.localStorage "wf_id" (set by App Embed Block on storefront)
+   * 2. init.data.cart.attributes "wf_influencer_id"
+   * 3. URL parameter ?wf_id= from the page URL (per-event)
+   * 4. Event cart/checkout attributes (per-event)
+   *
+   * sessionId resolution:
+   * 1. browser.localStorage "wf_session_id" (persisted across pages)
+   * 2. init.data.cart.token
+   * 3. init.data.checkout.token
+   * 4. cart attributes "wf_session_id"
+   * 5. Generate random + persist to localStorage
    */
 
   const ENDPOINT = "https://winfluencer-shopify-app.vercel.app/api/events";
+  const shopDomain = init?.data?.shop?.myshopifyDomain || "";
 
-  /* ─── WF_ID CACHE ─── */
+  /* ─── STATE ─── */
   let cachedWfId = "";
+  let sessionId = "";
+  let ready = false;
+  let pendingEvents = [];
 
-  /* ─── Try init.data.cart.attributes at startup ─── */
-  try {
-    const cartAttrs = init?.data?.cart?.attributes || [];
-    for (const attr of cartAttrs) {
-      if (attr.key === "wf_influencer_id" && attr.value) {
-        cachedWfId = attr.value;
-        break;
-      }
-    }
-  } catch (e) {}
-
-  /* ─── Try browser localStorage for wf_id (set by App Embed Block) ─── */
-  if (!cachedWfId) {
+  /* ─── ASYNC INITIALIZATION ─── */
+  async function initialize() {
+    // 1. Try browser.localStorage for wf_id (written by App Embed Block)
     try {
-      browser.localStorage.getItem("wf_id").then((val) => {
-        if (val && !cachedWfId) cachedWfId = val;
-      }).catch(() => {});
+      const val = await browser.localStorage.getItem("wf_id");
+      if (val) cachedWfId = val;
     } catch (e) {}
+
+    // 2. If not in localStorage, try init.data.cart.attributes
+    if (!cachedWfId) {
+      try {
+        const cartAttrs = init?.data?.cart?.attributes || [];
+        for (const attr of cartAttrs) {
+          if (attr.key === "wf_influencer_id" && attr.value) {
+            cachedWfId = attr.value;
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // ─── SESSION ID ───
+
+    // 1. Try browser.localStorage for persisted session ID
+    try {
+      const val = await browser.localStorage.getItem("wf_session_id");
+      if (val) sessionId = val;
+    } catch (e) {}
+
+    // 2. Try cart token from init data
+    if (!sessionId) {
+      try { sessionId = init?.data?.cart?.token || ""; } catch (e) {}
+    }
+
+    // 3. Try checkout token
+    if (!sessionId) {
+      try { sessionId = init?.data?.checkout?.token || ""; } catch (e) {}
+    }
+
+    // 4. Try wf_session_id from cart attributes
+    if (!sessionId) {
+      try {
+        const cartAttrs = init?.data?.cart?.attributes || [];
+        for (const attr of cartAttrs) {
+          if (attr.key === "wf_session_id" && attr.value) {
+            sessionId = attr.value;
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 5. Generate random session ID as last resort + persist
+    if (!sessionId) {
+      sessionId = "wf_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 10);
+    }
+
+    // Always persist sessionId so it stays consistent across page navigations
+    try {
+      await browser.localStorage.setItem("wf_session_id", sessionId);
+    } catch (e) {}
+
+    // Mark ready and flush queued events
+    ready = true;
+    for (const fn of pendingEvents) fn();
+    pendingEvents = [];
   }
 
-  /* NOTE: Do NOT fetch /cart.js here — Custom Pixels run in a sandboxed
-     iframe and Shopify blocks same-origin requests (RestrictedUrlError).
-     We rely on init.data, URL params, localStorage, and event data instead. */
+  initialize();
 
-  /* ─── RESOLVE WF_ID: multi-source, re-checks on every event ─── */
+  /* ─── RESOLVE WF_ID: re-checks per-event sources ─── */
   function resolveWfId(event) {
-    // 1. Return cached if we already have it
     if (cachedWfId) return cachedWfId;
 
-    // 2. Parse from page URL (?wf_id= parameter)
+    // Try URL parameter ?wf_id=
     try {
       const href = event?.context?.document?.location?.href || "";
       if (href.includes("wf_id=")) {
@@ -61,21 +119,18 @@ register(({ analytics, init, browser }) => {
       }
     } catch (e) {}
 
-    // 3. Try cart attributes from the event (updated on every event)
+    // Try cart attributes from event data
     try {
       const cartAttrs = event?.data?.cart?.attributes || [];
       for (const attr of cartAttrs) {
         if (attr.key === "wf_influencer_id" && attr.value) {
           cachedWfId = attr.value;
         }
-        if (attr.key === "wf_session_id" && attr.value && !sessionId) {
-          sessionId = attr.value;
-        }
       }
       if (cachedWfId) return cachedWfId;
     } catch (e) {}
 
-    // 4. Try checkout attributes
+    // Try checkout attributes
     try {
       const attrs = event?.data?.checkout?.attributes || [];
       for (const attr of attrs) {
@@ -86,69 +141,23 @@ register(({ analytics, init, browser }) => {
       }
     } catch (e) {}
 
-    // 5. Re-check init cart attributes (in case they loaded late)
-    try {
-      const initAttrs = init?.data?.cart?.attributes || [];
-      for (const attr of initAttrs) {
-        if (attr.key === "wf_influencer_id" && attr.value) {
-          cachedWfId = attr.value;
-          return cachedWfId;
-        }
-      }
-    } catch (e) {}
-
-    // 6. Try browser localStorage (written by App Embed Block on storefront)
-    // This is async so we trigger it for the NEXT event
-    try {
-      browser.localStorage.getItem("wf_id").then((val) => {
-        if (val && !cachedWfId) cachedWfId = val;
-      }).catch(() => {});
-    } catch (e) {}
-
     return "";
   }
 
-  /* ─── GET SHOP DOMAIN for store lookup ─── */
-  const shopDomain = init?.data?.shop?.myshopifyDomain || "";
-
-  /* ─── SESSION ID: try multiple sources ─── */
-  let sessionId = "";
-  // 1. Try cart token from init data
-  try { sessionId = init?.data?.cart?.token || ""; } catch (e) {}
-  // 2. Try checkout token
-  if (!sessionId) { try { sessionId = init?.data?.checkout?.token || ""; } catch (e) {} }
-  // 3. Try wf_session_id from cart attributes (written by App Embed Block)
-  if (!sessionId) {
-    try {
-      const cartAttrs = init?.data?.cart?.attributes || [];
-      for (const attr of cartAttrs) {
-        if (attr.key === "wf_session_id" && attr.value) {
-          sessionId = attr.value;
-          break;
-        }
-      }
-    } catch (e) {}
-  }
-  // 4. Try localStorage (persisted by App Embed Block or previous pixel run)
-  if (!sessionId) {
-    try {
-      browser.localStorage.getItem("wf_session_id").then((val) => {
-        if (val && !sessionId) sessionId = val;
-      }).catch(() => {});
-    } catch (e) {}
-  }
-  // 5. Generate a random session ID as last resort — persist to localStorage
-  if (!sessionId) {
-    sessionId = "wf_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 10);
-    try {
-      browser.localStorage.setItem("wf_session_id", sessionId).catch(() => {});
-    } catch (e) {}
-  }
-
-  /* ─── SEND EVENT ─── */
+  /* ─── SEND EVENT (queues until ready) ─── */
   function sendEvent(payload) {
+    if (!ready) {
+      pendingEvents.push(() => doSend(payload));
+      return;
+    }
+    doSend(payload);
+  }
+
+  function doSend(payload) {
     payload.shop = shopDomain;
     payload.session_id = sessionId || "";
+    // Re-resolve wf_id in case it was found after initial queue
+    if (!payload.wf_id && cachedWfId) payload.wf_id = cachedWfId;
     fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -157,7 +166,7 @@ register(({ analytics, init, browser }) => {
     }).catch(() => {});
   }
 
-  /* ─── HELPER: extract product from productVariant ─── */
+  /* ─── HELPERS ─── */
   function extractProduct(pv) {
     if (!pv) return {};
     return {
@@ -172,7 +181,6 @@ register(({ analytics, init, browser }) => {
     };
   }
 
-  /* ─── HELPER: extract line items from checkout ─── */
   function extractLineItems(lineItems) {
     if (!lineItems) return [];
     return lineItems.map((item) => ({
@@ -186,37 +194,30 @@ register(({ analytics, init, browser }) => {
   }
 
   /* ═══════════════════════════════════════════════
-     ALL SHOPIFY CUSTOMER EVENTS
+     EVENT SUBSCRIPTIONS
      ═══════════════════════════════════════════════ */
 
-  /* ─── PAGE VIEWED ─── */
   analytics.subscribe("page_viewed", (event) => {
     sendEvent({
       event_type: "page_viewed",
       wf_id: resolveWfId(event),
       page_url: event?.context?.document?.location?.href || "",
-      product_id: null,
-      product_title: null,
-      variant_id: null,
-      variant_title: null,
-      price: null,
-      quantity: null,
+      product_id: null, product_title: null,
+      variant_id: null, variant_title: null,
+      price: null, quantity: null,
     });
   });
 
-  /* ─── PRODUCT VIEWED ─── */
   analytics.subscribe("product_viewed", (event) => {
     const product = extractProduct(event?.data?.productVariant);
     sendEvent({
       event_type: "product_viewed",
       wf_id: resolveWfId(event),
       page_url: event?.context?.document?.location?.href || "",
-      ...product,
-      quantity: null,
+      ...product, quantity: null,
     });
   });
 
-  /* ─── PRODUCT ADDED TO CART ─── */
   analytics.subscribe("product_added_to_cart", (event) => {
     const cartLine = event?.data?.cartLine;
     const product = extractProduct(cartLine?.merchandise);
@@ -224,28 +225,23 @@ register(({ analytics, init, browser }) => {
       event_type: "product_added_to_cart",
       wf_id: resolveWfId(event),
       page_url: event?.context?.document?.location?.href || "",
-      ...product,
-      quantity: cartLine?.quantity || 1,
+      ...product, quantity: cartLine?.quantity || 1,
     });
   });
 
-  /* ─── CART VIEWED ─── */
   analytics.subscribe("cart_viewed", (event) => {
     const cart = event?.data?.cart;
     sendEvent({
       event_type: "cart_viewed",
       wf_id: resolveWfId(event),
       page_url: event?.context?.document?.location?.href || "",
-      product_id: null,
-      product_title: null,
-      variant_id: null,
-      variant_title: null,
+      product_id: null, product_title: null,
+      variant_id: null, variant_title: null,
       price: cart?.cost?.totalAmount?.amount ? Number(cart.cost.totalAmount.amount) : null,
       quantity: cart?.lines?.length || null,
     });
   });
 
-  /* ─── COLLECTION VIEWED ─── */
   analytics.subscribe("collection_viewed", (event) => {
     const collection = event?.data?.collection;
     sendEvent({
@@ -254,14 +250,12 @@ register(({ analytics, init, browser }) => {
       page_url: event?.context?.document?.location?.href || "",
       product_id: collection?.id ? String(collection.id) : null,
       product_title: collection?.title || null,
-      variant_id: null,
-      variant_title: null,
+      variant_id: null, variant_title: null,
       price: null,
       quantity: collection?.productVariants?.length || null,
     });
   });
 
-  /* ─── SEARCH SUBMITTED ─── */
   analytics.subscribe("search_submitted", (event) => {
     sendEvent({
       event_type: "search_submitted",
@@ -269,37 +263,30 @@ register(({ analytics, init, browser }) => {
       page_url: event?.context?.document?.location?.href || "",
       product_id: null,
       product_title: event?.data?.searchResult?.query || null,
-      variant_id: null,
-      variant_title: null,
+      variant_id: null, variant_title: null,
       price: null,
       quantity: event?.data?.searchResult?.productVariants?.length || null,
     });
   });
 
-  /* ─── CHECKOUT STARTED ─── */
   analytics.subscribe("checkout_started", (event) => {
     const checkout = event?.data?.checkout;
     const items = extractLineItems(checkout?.lineItems);
     const totalPrice = checkout?.totalPrice?.amount || 0;
     const shipping = checkout?.shippingLine?.price?.amount || 0;
     const tax = checkout?.totalTax?.amount || 0;
-
     sendEvent({
       event_type: "checkout_started",
       wf_id: resolveWfId(event),
       page_url: event?.context?.document?.location?.href || "",
-      product_id: null,
-      product_title: null,
-      variant_id: null,
-      variant_title: null,
+      product_id: null, product_title: null,
+      variant_id: null, variant_title: null,
       price: Number(totalPrice) - Number(shipping) - Number(tax),
       currency: checkout?.currencyCode || null,
-      quantity: items.length,
-      items,
+      quantity: items.length, items,
     });
   });
 
-  /* ─── CHECKOUT COMPLETED (PURCHASE) ─── */
   analytics.subscribe("checkout_completed", (event) => {
     const checkout = event?.data?.checkout;
     const order = checkout?.order;
@@ -307,15 +294,13 @@ register(({ analytics, init, browser }) => {
     const totalPrice = checkout?.totalPrice?.amount || 0;
     const shipping = checkout?.shippingLine?.price?.amount || 0;
     const tax = checkout?.totalTax?.amount || 0;
-
     sendEvent({
       event_type: "checkout_completed",
       wf_id: resolveWfId(event),
       page_url: event?.context?.document?.location?.href || "",
       product_id: order?.id ? String(order.id) : null,
       product_title: null,
-      variant_id: null,
-      variant_title: null,
+      variant_id: null, variant_title: null,
       price: Number(totalPrice) - Number(shipping) - Number(tax),
       currency: checkout?.currencyCode || null,
       quantity: items.length,
