@@ -30,9 +30,18 @@ register(({ analytics, init, browser }) => {
     }
   } catch (e) {}
 
+  /* ─── Try browser localStorage for wf_id (set by App Embed Block) ─── */
+  if (!cachedWfId) {
+    try {
+      browser.localStorage.getItem("wf_id").then((val) => {
+        if (val && !cachedWfId) cachedWfId = val;
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
   /* NOTE: Do NOT fetch /cart.js here — Custom Pixels run in a sandboxed
      iframe and Shopify blocks same-origin requests (RestrictedUrlError).
-     We rely on init.data, URL params, and event data instead. */
+     We rely on init.data, URL params, localStorage, and event data instead. */
 
   /* ─── RESOLVE WF_ID: multi-source, re-checks on every event ─── */
   function resolveWfId(event) {
@@ -88,6 +97,14 @@ register(({ analytics, init, browser }) => {
       }
     } catch (e) {}
 
+    // 6. Try browser localStorage (written by App Embed Block on storefront)
+    // This is async so we trigger it for the NEXT event
+    try {
+      browser.localStorage.getItem("wf_id").then((val) => {
+        if (val && !cachedWfId) cachedWfId = val;
+      }).catch(() => {});
+    } catch (e) {}
+
     return "";
   }
 
@@ -100,7 +117,7 @@ register(({ analytics, init, browser }) => {
   try { sessionId = init?.data?.cart?.token || ""; } catch (e) {}
   // 2. Try checkout token
   if (!sessionId) { try { sessionId = init?.data?.checkout?.token || ""; } catch (e) {} }
-  // 3. Try wf_session_id from cart attributes (written by theme snippet)
+  // 3. Try wf_session_id from cart attributes (written by App Embed Block)
   if (!sessionId) {
     try {
       const cartAttrs = init?.data?.cart?.attributes || [];
@@ -110,6 +127,21 @@ register(({ analytics, init, browser }) => {
           break;
         }
       }
+    } catch (e) {}
+  }
+  // 4. Try localStorage (persisted by App Embed Block or previous pixel run)
+  if (!sessionId) {
+    try {
+      browser.localStorage.getItem("wf_session_id").then((val) => {
+        if (val && !sessionId) sessionId = val;
+      }).catch(() => {});
+    } catch (e) {}
+  }
+  // 5. Generate a random session ID as last resort — persist to localStorage
+  if (!sessionId) {
+    sessionId = "wf_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 10);
+    try {
+      browser.localStorage.setItem("wf_session_id", sessionId).catch(() => {});
     } catch (e) {}
   }
 

@@ -37,10 +37,13 @@
       }
     }
 
-    /* 3b. Always write cart token as session ID */
-    if (cartToken && cart.attributes.wf_session_id !== cartToken) {
-      attrs.wf_session_id = cartToken;
-      needsUpdate = true;
+    /* 3b. Always write cart token as session ID (cart attrs + localStorage) */
+    if (cartToken) {
+      try { localStorage.setItem('wf_session_id', cartToken); } catch(e) {}
+      if (cart.attributes.wf_session_id !== cartToken) {
+        attrs.wf_session_id = cartToken;
+        needsUpdate = true;
+      }
     }
 
     if (needsUpdate) {
