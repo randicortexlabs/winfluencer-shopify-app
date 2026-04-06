@@ -1,20 +1,16 @@
-import { authenticate } from "../shopify.server";
-import db from "../db.server";
-
 export const action = async ({ request }) => {
+  const { authenticate } = await import("../shopify.server");
+  const { default: db } = await import("../db.server");
+
   const { payload, session, topic, shop } = await authenticate.webhook(request);
 
   console.log(`Received ${topic} webhook for ${shop}`);
-  const current = payload.current;
+  const current = payload?.current;
 
-  if (session) {
+  if (session && current) {
     await db.session.update({
-      where: {
-        id: session.id,
-      },
-      data: {
-        scope: current.toString(),
-      },
+      where: { id: session.id },
+      data: { scope: current.toString() },
     });
   }
 
