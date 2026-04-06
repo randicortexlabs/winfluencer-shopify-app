@@ -67,18 +67,22 @@ export const loader = async ({ request, params }) => {
 
   // Get per-influencer stats
   const influencerIds = campaign.influencers.map((i) => i.id);
+  const idFilter = influencerIds.length > 0 ? influencerIds : ["none"];
 
-  const [eventGroups, orderGroups] = await Promise.all([
+  const [eventGroups, purchaseEvents, checkoutGroups] = await Promise.all([
     db.event.groupBy({
       by: ["influencerId", "eventType"],
-      where: { influencerId: { in: influencerIds.length > 0 ? influencerIds : ["none"] } },
+      where: { influencerId: { in: idFilter } },
       _count: true,
     }),
-    db.order.groupBy({
+    db.event.findMany({
+      where: { influencerId: { in: idFilter }, eventType: "item_purchased" },
+      select: { influencerId: true, price: true, quantity: true },
+    }),
+    db.event.groupBy({
       by: ["influencerId"],
-      where: { influencerId: { in: influencerIds.length > 0 ? influencerIds : ["none"] } },
+      where: { influencerId: { in: idFilter }, eventType: "checkout_completed" },
       _count: true,
-      _sum: { totalPrice: true },
     }),
   ]);
 
@@ -89,19 +93,26 @@ export const loader = async ({ request, params }) => {
     eventMap[g.influencerId][g.eventType] = g._count;
   }
 
-  const orderMap = {};
-  for (const g of orderGroups) {
+  const revenueMap = {};
+  for (const e of purchaseEvents) {
+    if (!e.influencerId) continue;
+    revenueMap[e.influencerId] = (revenueMap[e.influencerId] || 0) + parseFloat(e.price || 0) * (e.quantity || 1);
+  }
+
+  const purchaseMap = {};
+  for (const g of checkoutGroups) {
     if (!g.influencerId) continue;
-    orderMap[g.influencerId] = { count: g._count, revenue: g._sum.totalPrice ?? 0 };
+    purchaseMap[g.influencerId] = g._count;
   }
 
   const influencers = campaign.influencers.map((inf) => {
     const events = eventMap[inf.id] || {};
-    const orders = orderMap[inf.id] || { count: 0, revenue: 0 };
     const visitors = (events["pageview"] || 0) + (events["page_viewed"] || 0);
     const cart = events["product_added_to_cart"] || 0;
-    const convRate = visitors > 0 ? ((orders.count / visitors) * 100).toFixed(1) : "0.0";
-    const aov = orders.count > 0 ? (orders.revenue / orders.count).toFixed(2) : "0.00";
+    const purchaseCount = purchaseMap[inf.id] || 0;
+    const revenue = revenueMap[inf.id] || 0;
+    const convRate = visitors > 0 ? ((purchaseCount / visitors) * 100).toFixed(1) : "0.0";
+    const aov = purchaseCount > 0 ? (revenue / purchaseCount).toFixed(2) : "0.00";
 
     return {
       id: inf.id,
@@ -113,10 +124,10 @@ export const loader = async ({ request, params }) => {
       visitors,
       cart,
       cartPct: visitors > 0 ? ((cart / visitors) * 100).toFixed(0) : "0",
-      purchases: orders.count,
-      purchasePct: cart > 0 ? ((orders.count / cart) * 100).toFixed(0) : "0",
+      purchases: purchaseCount,
+      purchasePct: cart > 0 ? ((purchaseCount / cart) * 100).toFixed(0) : "0",
       convRate: parseFloat(convRate),
-      revenue: orders.revenue,
+      revenue,
       aov: parseFloat(aov),
     };
   });
