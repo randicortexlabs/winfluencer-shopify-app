@@ -22,7 +22,7 @@ api_version = "2026-04"
 
   # ── Orders (declarative — replaces runtime REST registration) ──────────────
   [[webhooks.subscriptions]]
-  topics = [ "orders/created" ]
+  topics = [ "orders/create" ]
   uri = "/webhooks/orders"
 
   # ── GDPR (mandatory for App Store) ────────────────────────────────────────
