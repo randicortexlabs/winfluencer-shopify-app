@@ -4,7 +4,6 @@ client_id = "d450a43bd771e1dea848d30322a58c0f"
 name = "winfluencer-app"
 application_url = "https://winfluencer-shopify-app.vercel.app"
 embedded = true
-privacy_policy_url = "https://winfluencer.online/privacy-policy-shopify/"
 
 [build]
 automatically_update_urls_on_dev = false
