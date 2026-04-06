@@ -1,15 +1,20 @@
-import { useLoaderData, useNavigate } from "react-router";
+import { useState } from "react";
+import { Form, redirect, useActionData, useLoaderData, useNavigate } from "react-router";
 import {
   Badge,
+  Banner,
   BlockStack,
   Button,
   Card,
   DataTable,
   Divider,
+  FormLayout,
   InlineStack,
   Layout,
   Page,
+  Select,
   Text,
+  TextField,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { Sankey, Tooltip, Layer, Rectangle } from "recharts";
@@ -119,6 +124,47 @@ export const loader = async ({ request, params }) => {
   return { campaign, stats, influencers, sankeyData, products };
 };
 
+export const action = async ({ request, params }) => {
+  const { authenticate } = await import("../shopify.server");
+  const { default: db } = await import("../db.server");
+
+  const { session } = await authenticate.admin(request);
+  const store = await db.store.findUnique({ where: { shop: session.shop } });
+  if (!store) throw new Response("Store not found", { status: 404 });
+
+  const campaign = await db.campaign.findUnique({
+    where: { id: params.id },
+    include: { store: { select: { shop: true } } },
+  });
+  if (!campaign || campaign.store.shop !== session.shop) {
+    throw new Response("Campaign not found", { status: 404 });
+  }
+
+  const formData = await request.formData();
+  const name = String(formData.get("name") || "").trim();
+  const handle = String(formData.get("handle") || "").trim();
+  const platform = String(formData.get("platform") || "instagram");
+
+  if (!name || !handle) return { error: "Name and handle are required." };
+
+  const wfId = globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  const targetUrl = `https://${store.shop}`;
+  const trackingUrl = `${targetUrl}?wf_id=${wfId}`;
+
+  await db.influencer.create({
+    data: { campaignId: campaign.id, name, handle, platform, wfId, targetUrl, trackingUrl },
+  });
+
+  return redirect(`/app/campaigns/${params.id}`);
+};
+
+const PLATFORM_OPTIONS = [
+  { label: "Instagram", value: "instagram" },
+  { label: "TikTok", value: "tiktok" },
+  { label: "YouTube", value: "youtube" },
+  { label: "Other", value: "other" },
+];
+
 function SankeyNode({ x, y, width, height, index, payload }) {
   const name = payload?.name || "";
   const funnelStages = ["Page View", "Product View", "Add to Cart", "Checkout", "Purchase"];
@@ -142,7 +188,12 @@ function signalTone(signal) {
 
 export default function CampaignDetailPage() {
   const { campaign, stats, influencers, sankeyData, products } = useLoaderData();
+  const actionData = useActionData();
   const navigate = useNavigate();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newHandle, setNewHandle] = useState("");
+  const [newPlatform, setNewPlatform] = useState("instagram");
 
 
   return (
@@ -198,7 +249,12 @@ export default function CampaignDetailPage() {
             <BlockStack gap="300">
               <InlineStack align="space-between" blockAlign="center">
                 <Text variant="headingSm" as="h2">Influencer breakdown</Text>
-                <Badge tone="attention">{influencers.length} influencers</Badge>
+                <InlineStack gap="200">
+                  <Badge tone="attention">{influencers.length} influencers</Badge>
+                  <Button size="slim" onClick={() => setShowAddForm((v) => !v)}>
+                    {showAddForm ? "Cancel" : "Add influencer"}
+                  </Button>
+                </InlineStack>
               </InlineStack>
               <Divider />
               <div style={{ overflowX: "auto" }}>
@@ -232,6 +288,47 @@ export default function CampaignDetailPage() {
                   </tbody>
                 </table>
               </div>
+              {showAddForm && (
+                <div style={{ borderTop: "1px solid #E1E3E5", paddingTop: "16px" }}>
+                  <Form method="post" onSubmit={() => { setNewName(""); setNewHandle(""); setNewPlatform("instagram"); setShowAddForm(false); }}>
+                    <BlockStack gap="300">
+                      {actionData?.error && (
+                        <Banner tone="critical" title={actionData.error} />
+                      )}
+                      <Text variant="headingSm" as="h3">New influencer</Text>
+                      <FormLayout>
+                        <TextField
+                          label="Influencer name"
+                          name="name"
+                          value={newName}
+                          onChange={setNewName}
+                          autoComplete="off"
+                          requiredIndicator
+                        />
+                        <TextField
+                          label="Handle/username"
+                          name="handle"
+                          value={newHandle}
+                          onChange={setNewHandle}
+                          autoComplete="off"
+                          prefix="@"
+                          requiredIndicator
+                        />
+                        <Select
+                          label="Platform"
+                          name="platform"
+                          options={PLATFORM_OPTIONS}
+                          value={newPlatform}
+                          onChange={setNewPlatform}
+                        />
+                      </FormLayout>
+                      <InlineStack align="end">
+                        <Button submit variant="primary" size="slim">Add influencer</Button>
+                      </InlineStack>
+                    </BlockStack>
+                  </Form>
+                </div>
+              )}
             </BlockStack>
           </Card>
         </Layout.Section>
