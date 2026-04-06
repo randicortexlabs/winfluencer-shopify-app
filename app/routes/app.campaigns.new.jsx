@@ -119,7 +119,6 @@ export default function NewCampaignPage() {
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [budget, setBudget] = useState("");
   const [storeUrl, setStoreUrl] = useState(`https://${store.shop}`);
   const [influencers, setInfluencers] = useState([createRow()]);
 
@@ -172,17 +171,6 @@ export default function NewCampaignPage() {
                   autoComplete="off"
                 />
               </InlineStack>
-              <TextField
-                type="number"
-                label="Budget ($)"
-                name="budget"
-                value={budget}
-                onChange={setBudget}
-                autoComplete="off"
-                placeholder="e.g. 5000"
-                helpText="Optional — used to track budget utilisation on campaign cards"
-                prefix="$"
-              />
               <TextField
                 label="Store URL for tracking"
                 name="storeUrl"
