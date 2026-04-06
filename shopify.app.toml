@@ -20,6 +20,11 @@ api_version = "2026-04"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  # ── Orders (declarative — replaces runtime REST registration) ──────────────
+  [[webhooks.subscriptions]]
+  topics = [ "orders/created" ]
+  uri = "/webhooks/orders"
+
   # ── GDPR (mandatory for App Store) ────────────────────────────────────────
   [[webhooks.subscriptions]]
   compliance_topics = [ "customers/data_request" ]

@@ -50,33 +50,9 @@ export const loader = async ({ request }) => {
     }
   }
 
-  if (store) {
-    const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-    try {
-      const webhookRes = await fetch(
-        `https://${shop}/admin/api/2024-10/webhooks.json`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": accessToken,
-          },
-          body: JSON.stringify({
-            webhook: {
-              topic: "orders/create",
-              address: `${appUrl}/api/webhooks/orders`,
-              format: "json",
-            },
-          }),
-        }
-      );
-      const bodyText = await webhookRes.text();
-      console.log("[Winfluencer] webhook registration", webhookRes.ok ? "success" : "failure", webhookRes.status, webhookRes.ok ? "" : bodyText);
-    } catch (e) {
-      console.log("[Winfluencer] webhook registration failure", e);
-    }
-    console.log("[Winfluencer] first-install setup finished for", shop);
-  }
+  // orders/created webhook is registered declaratively in shopify.app.toml
+  // No runtime REST registration needed — avoids duplicate webhooks and
+  // deprecated API usage on every page load.
 
   if (!store) throw new Response("Store not available", { status: 500 });
 

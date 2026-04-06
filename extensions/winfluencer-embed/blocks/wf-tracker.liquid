@@ -55,34 +55,9 @@
     }
   }).catch(function(){});
 
-  /* 4. Re-sync cart attribute after any add-to-cart or cart-change */
-  try {
-    var origFetch = window.fetch;
-    window.fetch = function() {
-      var url = arguments[0];
-      if (typeof url === 'string' && (url.indexOf('/cart/add') !== -1 || url.indexOf('/cart/change') !== -1)) {
-        var storedWf = '';
-        try {
-          var p = new URLSearchParams(window.location.search);
-          storedWf = p.get('wf_id') || '';
-        } catch(e) {}
-        if (!storedWf) {
-          try { storedWf = localStorage.getItem('wf_id') || ''; } catch(e) {}
-        }
-        if (storedWf) {
-          var of = origFetch;
-          setTimeout(function() {
-            of('/cart/update.js', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ attributes: { 'wf_influencer_id': storedWf } })
-            }).catch(function(){});
-          }, 500);
-        }
-      }
-      return origFetch.apply(this, arguments);
-    };
-  } catch(e) {}
+  /* 4. Cart attributes set on page load persist through all add-to-cart and
+        cart-change actions for the session. No fetch interception needed.
+        The pixel's browser.localStorage is the fallback for checkout. */
 })();
 </script>
 
