@@ -18,7 +18,7 @@ register(({ analytics, init, browser }) => {
    *   wf_journey   — JSON array of {wfId, ts} objects (multi-touch history)
    */
 
-  const ENDPOINT = "https://winfluencer-shopify-app.vercel.app/api/events";
+  const ENDPOINT = "https://app.winfluencer.online/api/events";
   const shopDomain = init?.data?.shop?.myshopifyDomain || "";
 
   /* ─── STATE ─── */

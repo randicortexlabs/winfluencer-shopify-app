@@ -2,7 +2,7 @@
 
 client_id = "d450a43bd771e1dea848d30322a58c0f"
 name = "winfluencer-app"
-application_url = "https://winfluencer-shopify-app.vercel.app"
+application_url = "https://app.winfluencer.online"
 embedded = true
 
 [build]
@@ -39,9 +39,9 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://winfluencer-shopify-app.vercel.app/api/auth" ]
+redirect_urls = [ "https://app.winfluencer.online/api/auth" ]
 
 [app_proxy]
-url = "https://winfluencer-shopify-app.vercel.app/api"
+url = "https://app.winfluencer.online/api"
 subpath = "winfluencer"
 prefix = "apps"
