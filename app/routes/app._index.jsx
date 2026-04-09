@@ -132,16 +132,98 @@ export default function DashboardPage() {
         {isNewInstall && (
           <Layout.Section>
             <Card>
-              <InlineStack align="space-between" blockAlign="center">
-                <Text variant="headingSm" as="h2">Setup complete</Text>
-                <Badge tone="success">New install</Badge>
-              </InlineStack>
-              <div style={{ marginTop: "12px" }}>
-                <Text as="p" tone="subdued">
-                  Winfluencer is connected to your store. Tracking snippet,
-                  pixel, and order webhook were installed automatically.
-                </Text>
-              </div>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text variant="headingMd" as="h2">Welcome to Winfluencer! 🎉</Text>
+                    <Text as="p" tone="subdued">Complete these 4 steps to start tracking influencer sales.</Text>
+                  </BlockStack>
+                  <Badge tone="success">New install</Badge>
+                </InlineStack>
+                <Divider />
+                <BlockStack gap="400">
+                  {/* Step 1 */}
+                  <InlineStack gap="300" blockAlign="start" wrap={false}>
+                    <div style={{ width: "28px", height: "28px", borderRadius: "50%", backgroundColor: "#D1FAE5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Text as="p" fontWeight="bold" tone="success">✓</Text>
+                    </div>
+                    <BlockStack gap="050" inlineSize="fill">
+                      <Text as="p" fontWeight="semibold">Store connected via OAuth</Text>
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        Winfluencer is authenticated and linked to <strong>{store.shop}</strong>.
+                      </Text>
+                    </BlockStack>
+                    <Badge tone="success">Done</Badge>
+                  </InlineStack>
+
+                  {/* Step 2 */}
+                  <InlineStack gap="300" blockAlign="start" wrap={false}>
+                    <div style={{ width: "28px", height: "28px", borderRadius: "50%", backgroundColor: "#D1FAE5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Text as="p" fontWeight="bold" tone="success">✓</Text>
+                    </div>
+                    <BlockStack gap="050" inlineSize="fill">
+                      <Text as="p" fontWeight="semibold">Tracking pixel &amp; webhook installed</Text>
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        Web pixel is active and capturing page views, add-to-cart, checkout, and purchase events. Order webhook is registered for server-side attribution.
+                      </Text>
+                    </BlockStack>
+                    <Badge tone="success">Done</Badge>
+                  </InlineStack>
+
+                  {/* Step 3 — requires merchant action */}
+                  <InlineStack gap="300" blockAlign="start" wrap={false}>
+                    <div style={{ width: "28px", height: "28px", borderRadius: "50%", backgroundColor: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Text as="p" fontWeight="bold">3</Text>
+                    </div>
+                    <BlockStack gap="200" inlineSize="fill">
+                      <BlockStack gap="050">
+                        <Text as="p" fontWeight="semibold">Enable the Winfluencer App Embed in your theme</Text>
+                        <Text as="p" tone="subdued" variant="bodySm">
+                          The App Embed Block enables first-party <code>wf_id</code> parameter capture on your storefront. Without it, influencer click attribution will not work.
+                        </Text>
+                      </BlockStack>
+                      <BlockStack gap="100">
+                        <Text as="p" variant="bodySm" fontWeight="semibold">How to enable:</Text>
+                        <BlockStack gap="050">
+                          <Text as="p" tone="subdued" variant="bodySm">1. Click <strong>"Open Theme Editor"</strong> below</Text>
+                          <Text as="p" tone="subdued" variant="bodySm">2. In the left sidebar, click <strong>"App Embeds"</strong></Text>
+                          <Text as="p" tone="subdued" variant="bodySm">3. Toggle on <strong>"Winfluencer"</strong></Text>
+                          <Text as="p" tone="subdued" variant="bodySm">4. Click <strong>"Save"</strong> in the top right</Text>
+                        </BlockStack>
+                      </BlockStack>
+                      <div>
+                        <Button
+                          url={`https://${store.shop}/admin/themes/current/editor?context=apps`}
+                          external
+                          variant="primary"
+                        >
+                          Open Theme Editor → App Embeds
+                        </Button>
+                      </div>
+                    </BlockStack>
+                    <Badge tone="attention">Action needed</Badge>
+                  </InlineStack>
+
+                  {/* Step 4 */}
+                  <InlineStack gap="300" blockAlign="start" wrap={false}>
+                    <div style={{ width: "28px", height: "28px", borderRadius: "50%", backgroundColor: "#F1F2F3", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Text as="p" fontWeight="bold">4</Text>
+                    </div>
+                    <BlockStack gap="100" inlineSize="fill">
+                      <Text as="p" fontWeight="semibold">Create your first campaign</Text>
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        Add your influencers and generate unique tracking links (<code>?wf_id=</code>). Share the links with influencers — every click, cart, and purchase will be attributed automatically.
+                      </Text>
+                      <div>
+                        <Button url="/app/campaigns/new" variant="secondary">
+                          Create your first campaign
+                        </Button>
+                      </div>
+                    </BlockStack>
+                    <Badge>Up next</Badge>
+                  </InlineStack>
+                </BlockStack>
+              </BlockStack>
             </Card>
           </Layout.Section>
         )}

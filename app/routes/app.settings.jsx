@@ -159,6 +159,61 @@ export default function SettingsPage() {
           </Layout.Section>
         )}
 
+        {/* Theme App Extension Setup */}
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400">
+              <InlineStack align="space-between" blockAlign="center">
+                <BlockStack gap="100">
+                  <Text variant="headingSm" as="h2">Theme App Extension setup</Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    The Winfluencer App Embed must be enabled in your theme to capture influencer clicks on your storefront.
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+              <Divider />
+              <BlockStack gap="300">
+                <Text as="p" fontWeight="semibold" variant="bodySm">How to enable the App Embed Block:</Text>
+                <BlockStack gap="200">
+                  <InlineStack gap="200" blockAlign="start">
+                    <div style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: "#E8854A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Text as="p" variant="bodySm" fontWeight="bold" tone="text-inverse">1</Text>
+                    </div>
+                    <Text as="p" variant="bodySm">Click <strong>"Open Theme Editor"</strong> below — it opens directly to the App Embeds panel.</Text>
+                  </InlineStack>
+                  <InlineStack gap="200" blockAlign="start">
+                    <div style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: "#E8854A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Text as="p" variant="bodySm" fontWeight="bold" tone="text-inverse">2</Text>
+                    </div>
+                    <Text as="p" variant="bodySm">In the left sidebar, find <strong>"Winfluencer"</strong> under App Embeds and toggle it <strong>on</strong>.</Text>
+                  </InlineStack>
+                  <InlineStack gap="200" blockAlign="start">
+                    <div style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: "#E8854A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Text as="p" variant="bodySm" fontWeight="bold" tone="text-inverse">3</Text>
+                    </div>
+                    <Text as="p" variant="bodySm">Click <strong>"Save"</strong> in the top right corner of the theme editor.</Text>
+                  </InlineStack>
+                  <InlineStack gap="200" blockAlign="start">
+                    <div style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: "#E8854A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Text as="p" variant="bodySm" fontWeight="bold" tone="text-inverse">4</Text>
+                    </div>
+                    <Text as="p" variant="bodySm">Return to Winfluencer and create your first campaign to generate <code>?wf_id=</code> tracking links.</Text>
+                  </InlineStack>
+                </BlockStack>
+                <InlineStack gap="200">
+                  <Button
+                    url={`https://${store.shop}/admin/themes/current/editor?context=apps`}
+                    external
+                    variant="primary"
+                  >
+                    Open Theme Editor → App Embeds
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
         {/* Tracking status */}
         <Layout.Section>
           <Card>
