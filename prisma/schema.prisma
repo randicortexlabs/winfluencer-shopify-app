@@ -29,12 +29,13 @@ model Session {
 }
 
 model Store {
-  id          String    @id @default(cuid())
-  shop        String    @unique
-  accessToken String
-  pixelId     String    @unique @default(cuid())
-  createdAt   DateTime  @default(now())
-  deletedAt   DateTime?
+  id              String    @id @default(cuid())
+  shop            String    @unique
+  accessToken     String
+  pixelId         String    @unique @default(cuid())
+  createdAt       DateTime  @default(now())
+  deletedAt       DateTime?
+  appEmbedEnabled Boolean   @default(false)
   campaigns   Campaign[]
   events      Event[]
   orders      Order[]
