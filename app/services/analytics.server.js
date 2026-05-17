@@ -17,7 +17,15 @@ async function countPurchases(where) {
 // ─── Funnel counts ────────────────────────────────────────────────────────────
 
 export async function getStoreFunnelCounts(storeId) {
-  const [eventGroups, purchased, uniqueSessions] = await Promise.all([
+  // Exclude checkout page views — checkout.shopify.com fires page_viewed on every
+  // checkout step, inflating the storefront visitor count.
+  const storefrontPageFilter = {
+    storeId,
+    eventType: { in: ["page_viewed", "pageview"] },
+    NOT: { pageUrl: { contains: "/checkouts/" } },
+  };
+
+  const [eventGroups, purchased, uniqueSessions, storefrontPageViews] = await Promise.all([
     db.event.groupBy({
       by: ["eventType"],
       where: { storeId },
@@ -25,21 +33,18 @@ export async function getStoreFunnelCounts(storeId) {
     }),
     countPurchases({ storeId }),
     db.event.findMany({
-      where: {
-        storeId,
-        eventType: { in: ["page_viewed", "pageview"] },
-        sessionId: { not: "" },
-      },
+      where: { ...storefrontPageFilter, sessionId: { not: "" } },
       select: { sessionId: true },
       distinct: ["sessionId"],
     }),
+    db.event.count({ where: storefrontPageFilter }),
   ]);
 
   const counts = {};
   for (const g of eventGroups) counts[g.eventType] = g._count;
 
   return {
-    visitors: (counts["page_viewed"] || 0) + (counts["pageview"] || 0),
+    visitors: storefrontPageViews,
     uniqueVisitors: uniqueSessions.length,
     productViews: counts["product_viewed"] || 0,
     addToCart: counts["product_added_to_cart"] || 0,
@@ -50,7 +55,13 @@ export async function getStoreFunnelCounts(storeId) {
 }
 
 export async function getInfluencerFunnelCounts(influencerId) {
-  const [eventGroups, purchased, uniqueSessions] = await Promise.all([
+  const storefrontPageFilter = {
+    influencerId,
+    eventType: { in: ["page_viewed", "pageview"] },
+    NOT: { pageUrl: { contains: "/checkouts/" } },
+  };
+
+  const [eventGroups, purchased, uniqueSessions, storefrontPageViews] = await Promise.all([
     db.event.groupBy({
       by: ["eventType"],
       where: { influencerId },
@@ -58,21 +69,18 @@ export async function getInfluencerFunnelCounts(influencerId) {
     }),
     countPurchases({ influencerId }),
     db.event.findMany({
-      where: {
-        influencerId,
-        eventType: { in: ["page_viewed", "pageview"] },
-        sessionId: { not: "" },
-      },
+      where: { ...storefrontPageFilter, sessionId: { not: "" } },
       select: { sessionId: true },
       distinct: ["sessionId"],
     }),
+    db.event.count({ where: storefrontPageFilter }),
   ]);
 
   const counts = {};
   for (const g of eventGroups) counts[g.eventType] = g._count;
 
   return {
-    visitors: (counts["page_viewed"] || 0) + (counts["pageview"] || 0),
+    visitors: storefrontPageViews,
     uniqueVisitors: uniqueSessions.length,
     productViews: counts["product_viewed"] || 0,
     addToCart: counts["product_added_to_cart"] || 0,
@@ -90,20 +98,27 @@ export async function getCampaignFunnelCounts(campaignId) {
   const influencerIds = influencers.map((i) => i.id);
   const idFilter = influencerIds.length > 0 ? influencerIds : ["none"];
 
-  const [eventGroups, purchased] = await Promise.all([
+  const storefrontPageFilter = {
+    influencerId: { in: idFilter },
+    eventType: { in: ["page_viewed", "pageview"] },
+    NOT: { pageUrl: { contains: "/checkouts/" } },
+  };
+
+  const [eventGroups, purchased, storefrontPageViews] = await Promise.all([
     db.event.groupBy({
       by: ["eventType"],
       where: { influencerId: { in: idFilter } },
       _count: true,
     }),
     countPurchases({ influencerId: { in: idFilter } }),
+    db.event.count({ where: storefrontPageFilter }),
   ]);
 
   const counts = {};
   for (const g of eventGroups) counts[g.eventType] = g._count;
 
   return {
-    visitors: (counts["page_viewed"] || 0) + (counts["pageview"] || 0),
+    visitors: storefrontPageViews,
     productViews: counts["product_viewed"] || 0,
     addToCart: counts["product_added_to_cart"] || 0,
     checkoutStarted: counts["checkout_started"] || 0,
@@ -615,9 +630,21 @@ export async function getInfluencerRoleBreakdown(influencerId) {
 
   for (const tp of touchpoints) {
     const maxIdx = sessionMaxIndex[tp.sessionId] ?? 0;
-    if (tp.touchIndex === 0) introducer++;
-    else if (tp.touchIndex === maxIdx) closer++;
-    else influencerMid++;
+    const isFirst = tp.touchIndex === 0;
+    const isLast  = tp.touchIndex === maxIdx;
+
+    if (maxIdx === 0) {
+      // Single-touch journey: this influencer is the only touch.
+      // Last-touch attribution gives them full Closer credit
+      // (they had the final click that led to the session outcome).
+      closer++;
+    } else if (isFirst) {
+      introducer++;
+    } else if (isLast) {
+      closer++;
+    } else {
+      influencerMid++;
+    }
   }
 
   const total = touchpoints.length;

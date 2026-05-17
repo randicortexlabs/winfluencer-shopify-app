@@ -227,8 +227,8 @@ export default function SettingsPage() {
                   active={true}
                 />
                 <TrackingStep
-                  title="Tracking snippet installed"
-                  description="Injected into theme.liquid \u00B7 Capturing ?wf_id= parameters"
+                  title="App Embed Block active"
+                  description="Theme App Extension \u00B7 Capturing ?wf_id= parameters on storefront"
                   active={true}
                 />
                 <TrackingStep

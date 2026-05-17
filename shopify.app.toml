@@ -34,7 +34,7 @@ api_version = "2026-04"
   uri = "/webhooks/shop/redact"
 
 [access_scopes]
-scopes = "read_customer_events,write_pixels,write_themes"
+scopes = "read_customer_events,write_pixels"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
