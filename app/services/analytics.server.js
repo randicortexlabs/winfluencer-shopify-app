@@ -160,7 +160,7 @@ export async function getTopInfluencers(storeId, limit = 5) {
 
   const ids = influencers.map((i) => i.id);
 
-  const [eventGroups, purchaseEvents, checkoutGroups] = await Promise.all([
+  const [eventGroups, purchaseEvents, checkoutGroups, visitorGroups] = await Promise.all([
     db.event.groupBy({
       by: ["influencerId", "eventType"],
       where: { influencerId: { in: ids } },
@@ -173,6 +173,17 @@ export async function getTopInfluencers(storeId, limit = 5) {
     db.event.groupBy({
       by: ["influencerId"],
       where: { influencerId: { in: ids }, eventType: "checkout_completed" },
+      _count: true,
+    }),
+    // Exclude checkout page views — checkout.shopify.com fires page_viewed on
+    // every checkout step, inflating storefront visitor counts.
+    db.event.groupBy({
+      by: ["influencerId"],
+      where: {
+        influencerId: { in: ids },
+        eventType: { in: ["page_viewed", "pageview"] },
+        NOT: { pageUrl: { contains: "/checkouts/" } },
+      },
       _count: true,
     }),
   ]);
@@ -196,9 +207,16 @@ export async function getTopInfluencers(storeId, limit = 5) {
     purchaseMap[g.influencerId] = g._count;
   }
 
+  // Map of storefront-only (non-checkout) visitor counts per influencer
+  const visitorMap = {};
+  for (const g of visitorGroups) {
+    if (!g.influencerId) continue;
+    visitorMap[g.influencerId] = g._count;
+  }
+
   const enriched = influencers.map((inf) => {
     const events = eventMap[inf.id] || {};
-    const visitors = (events["page_viewed"] || 0) + (events["pageview"] || 0);
+    const visitors = visitorMap[inf.id] || 0;
     const addToCart = events["product_added_to_cart"] || 0;
     const purchaseCount = purchaseMap[inf.id] || 0;
     const revenue = revenueMap[inf.id] || 0;
@@ -296,16 +314,31 @@ export async function getInfluencerStats(influencerId) {
 export async function getProductIntelligence(storeId, filters = {}) {
   const { campaignId, influencerId } = filters;
 
-  const baseWhere = { storeId, productId: { not: null } };
-  if (influencerId) baseWhere.influencerId = influencerId;
+  // Influencer/campaign filter — resolved once, applied to both queries
+  const influencerFilter = {};
+  if (influencerId) influencerFilter.influencerId = influencerId;
   if (campaignId) {
     const infs = await db.influencer.findMany({ where: { campaignId }, select: { id: true } });
     const ids = infs.map((i) => i.id);
-    baseWhere.influencerId = { in: ids.length > 0 ? ids : ["none"] };
+    influencerFilter.influencerId = { in: ids.length > 0 ? ids : ["none"] };
   }
 
-  const cartWhere = { ...baseWhere, eventType: "product_added_to_cart" };
-  const purchaseWhere = { ...baseWhere, eventType: "item_purchased" };
+  // Cart events: require productId so we can group by it
+  const cartWhere = {
+    storeId,
+    productId: { not: null },
+    eventType: "product_added_to_cart",
+    ...influencerFilter,
+  };
+
+  // Purchase events: do NOT require productId — item_purchased events created
+  // from checkout line items sometimes lack productId (nested GID not always
+  // returned by the Web Pixel). productTitle + variantId is enough to identify.
+  const purchaseWhere = {
+    storeId,
+    eventType: "item_purchased",
+    ...influencerFilter,
+  };
 
   const [cartGroups, purchaseEvents] = await Promise.all([
     db.event.groupBy({
@@ -316,28 +349,41 @@ export async function getProductIntelligence(storeId, filters = {}) {
     }),
     db.event.findMany({
       where: purchaseWhere,
-      select: { variantId: true, productTitle: true, price: true, quantity: true },
+      select: {
+        variantId: true, productId: true,
+        productTitle: true, variantTitle: true,
+        price: true, quantity: true,
+      },
     }),
   ]);
 
-  // Build purchase map keyed by variantId
+  // Build purchase map keyed by variantId (fall back to productTitle)
   const purchaseMap = {};
   for (const e of purchaseEvents) {
-    const key = e.variantId || "unknown";
-    if (!purchaseMap[key]) purchaseMap[key] = { count: 0, revenue: 0 };
+    const key = e.variantId || e.productTitle || "unknown";
+    if (!purchaseMap[key]) {
+      purchaseMap[key] = {
+        count: 0, revenue: 0,
+        productId: e.productId,
+        productTitle: e.productTitle,
+        variantTitle: e.variantTitle,
+        price: e.price,
+      };
+    }
     purchaseMap[key].count += e.quantity || 1;
     purchaseMap[key].revenue += parseFloat(e.price || 0) * (e.quantity || 1);
   }
 
-  const products = cartGroups.map((cg) => {
-    const key = cg.variantId || "unknown";
+  // Start building the product map from cart groups
+  const productMap = {};
+  for (const cg of cartGroups) {
+    const key = cg.variantId || cg.productTitle || "unknown";
     const purchased = purchaseMap[key] || { count: 0, revenue: 0 };
     const cartCount = cg._count;
     const purchaseCount = purchased.count;
-    const rate =
-      cartCount > 0 ? ((purchaseCount / cartCount) * 100).toFixed(1) : "0.0";
+    const rate = cartCount > 0 ? ((purchaseCount / cartCount) * 100).toFixed(1) : "0.0";
 
-    return {
+    productMap[key] = {
       productId: cg.productId,
       productTitle: cg.productTitle || "Unknown",
       variantId: cg.variantId,
@@ -349,9 +395,30 @@ export async function getProductIntelligence(storeId, filters = {}) {
       revenue: purchased.revenue,
       signal: computeSignal(cartCount, purchaseCount),
     };
-  });
+  }
 
-  products.sort((a, b) => b.carted - a.carted);
+  // Add products that were purchased but NOT in any cart group.
+  // This covers: "Buy Now" button, direct checkout, or add-to-cart before
+  // the visitor clicked the influencer tracking link (cart event unattributed).
+  for (const [key, purch] of Object.entries(purchaseMap)) {
+    if (productMap[key]) continue; // already merged above
+    productMap[key] = {
+      productId: purch.productId || null,
+      productTitle: purch.productTitle || "Unknown",
+      variantId: key !== "unknown" ? key : null,
+      variantTitle: purch.variantTitle || "Default",
+      price: purch.price || 0,
+      carted: 0,
+      purchased: purch.count,
+      rate: 0,
+      revenue: purch.revenue,
+      signal: computeSignal(0, purch.count),
+    };
+  }
+
+  const products = Object.values(productMap);
+  // Sort: most carted first, then most purchased, then highest revenue
+  products.sort((a, b) => b.carted - a.carted || b.purchased - a.purchased || b.revenue - a.revenue);
   return products;
 }
 
@@ -409,10 +476,13 @@ export async function getEnrichedCampaigns(storeId) {
       const [revenue, purchases, visitorCount] = await Promise.all([
         sumRevenue({ influencerId: { in: idFilter } }),
         countPurchases({ influencerId: { in: idFilter } }),
+        // Exclude checkout page views — checkout.shopify.com fires page_viewed
+        // on every step, inflating campaign visitor totals.
         db.event.count({
           where: {
             influencerId: { in: idFilter },
             eventType: { in: ["pageview", "page_viewed"] },
+            NOT: { pageUrl: { contains: "/checkouts/" } },
           },
         }),
       ]);
