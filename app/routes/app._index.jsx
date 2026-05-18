@@ -99,7 +99,7 @@ export default function DashboardPage() {
   const { funnel } = metrics;
 
   const funnelStages = [
-    { label: "Visitors", value: funnel.visitors, color: "#E8854A" },
+    { label: "Visitor sessions", value: funnel.visitors, color: "#E8854A" },
     { label: "Product views", value: funnel.productViews, color: "#D4692E" },
     { label: "Add to cart", value: funnel.addToCart, color: "#B8461A" },
     { label: "Checkout", value: funnel.checkoutStarted, color: "#9A3A15" },
@@ -239,14 +239,14 @@ export default function DashboardPage() {
             </Card>
             <Card>
               <BlockStack gap="150">
-                <Text as="p" tone="subdued">Total Visitors</Text>
+                <Text as="p" tone="subdued">Visitor sessions</Text>
                 <Text variant="headingLg" as="p">{totalVisitors.toLocaleString()}</Text>
                 <Text as="p" tone="subdued">page views</Text>
               </BlockStack>
             </Card>
             <Card>
               <BlockStack gap="150">
-                <Text as="p" tone="subdued">Unique Visitors</Text>
+                <Text as="p" tone="subdued">Unique sessions</Text>
                 <Text variant="headingLg" as="p" tone="success">{uniqueVisitors.toLocaleString()}</Text>
                 <Text as="p" tone="subdued">distinct sessions</Text>
               </BlockStack>
@@ -285,7 +285,7 @@ export default function DashboardPage() {
                     <BlockStack gap="100">
                       <Text variant="headingSm" as="h2">Conversion funnel</Text>
                       <Text as="p" tone="subdued">
-                        {totalVisitors.toLocaleString()} total visitors
+                        {totalVisitors.toLocaleString()} visitor sessions
                       </Text>
                     </BlockStack>
                     <Badge tone="success">Live</Badge>
@@ -424,7 +424,7 @@ export default function DashboardPage() {
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid #E1E3E5" }}>
-                        {["Influencer", "Platform", "Visitors", "Add to cart", "Purchases", "Conv. rate", "Revenue", "AOV", "Status"].map((h) => (
+                        {["Influencer", "Platform", "Visitor sessions", "Add to cart", "Purchases", "Conv. rate", "Revenue", "AOV", "Status"].map((h) => (
                           <th key={h} style={{ padding: "10px 12px", textAlign: h === "Influencer" || h === "Platform" || h === "Status" ? "left" : "right", fontSize: "13px", fontWeight: 600, color: "#6D7175" }}>{h}</th>
                         ))}
                       </tr>

@@ -74,7 +74,7 @@ export default function InfluencerDetailPage() {
   const { funnel } = stats;
 
   const funnelStages = [
-    { label: "Visitors", value: funnel.visitors, tone: "highlight" },
+    { label: "Visitor sessions", value: funnel.visitors, tone: "highlight" },
     { label: "Product views", value: funnel.productViews, tone: "highlight" },
     { label: "Add to cart", value: funnel.addToCart, tone: "primary" },
     { label: "Checkout", value: funnel.checkoutStarted, tone: "primary" },
@@ -154,13 +154,13 @@ export default function InfluencerDetailPage() {
             </Card>
             <Card>
               <BlockStack gap="100">
-                <Text as="p" tone="subdued" variant="bodySm">Visitors</Text>
+                <Text as="p" tone="subdued" variant="bodySm">Visitor sessions</Text>
                 <Text variant="headingLg" as="p">{stats.visitors.toLocaleString()}</Text>
               </BlockStack>
             </Card>
             <Card>
               <BlockStack gap="100">
-                <Text as="p" tone="subdued" variant="bodySm">Unique Visitors</Text>
+                <Text as="p" tone="subdued" variant="bodySm">Unique sessions</Text>
                 <Text variant="headingLg" as="p" tone="success">{stats.uniqueVisitors.toLocaleString()}</Text>
               </BlockStack>
             </Card>
@@ -280,7 +280,7 @@ export default function InfluencerDetailPage() {
                   <BlockStack gap="100">
                     <Text variant="headingSm" as="h2">Conversion funnel</Text>
                     <Text as="p" tone="subdued">
-                      {totalVisitors.toLocaleString()} visitors &middot; {stats.convRate}% overall conversion
+                      {totalVisitors.toLocaleString()} visitor sessions &middot; {stats.convRate}% overall conversion
                     </Text>
                   </BlockStack>
                   <Divider />

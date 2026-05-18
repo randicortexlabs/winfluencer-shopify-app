@@ -115,7 +115,7 @@ export default function CampaignsListPage() {
                             </Text>
                           </BlockStack>
                           <BlockStack gap="050">
-                            <Text as="p" tone="subdued" variant="bodySm">Visitors</Text>
+                            <Text as="p" tone="subdued" variant="bodySm">Visitor sessions</Text>
                             <Text as="p" fontWeight="semibold">{campaign.visitors.toLocaleString()}</Text>
                           </BlockStack>
                           <BlockStack gap="050">

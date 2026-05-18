@@ -229,7 +229,7 @@ export default function CampaignDetailPage() {
             </Card>
             <Card>
               <BlockStack gap="100">
-                <Text as="p" tone="subdued" variant="bodySm">Visitors</Text>
+                <Text as="p" tone="subdued" variant="bodySm">Visitor sessions</Text>
                 <Text variant="headingLg" as="p">{stats.visitors.toLocaleString()}</Text>
               </BlockStack>
             </Card>
@@ -272,7 +272,7 @@ export default function CampaignDetailPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #E1E3E5" }}>
-                      {["Influencer", "Tracking link", "Visitors", "\u2192 Cart", "\u2192 Purchase", "Conv. rate", "Revenue", "AOV"].map((h) => (
+                      {["Influencer", "Tracking link", "Visitor sessions", "\u2192 Cart", "\u2192 Purchase", "Conv. rate", "Revenue", "AOV"].map((h) => (
                         <th key={h} style={{ padding: "10px 12px", textAlign: h === "Influencer" || h === "Tracking link" ? "left" : "right", fontSize: "13px", fontWeight: 600, color: "#6D7175" }}>{h}</th>
                       ))}
                     </tr>
