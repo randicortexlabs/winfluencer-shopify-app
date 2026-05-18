@@ -1,5 +1,5 @@
 // Customer-event subscriptions live in extensions/winfluencer-pixel; this activates that extension.
-const ADMIN_GRAPHQL = "2024-10";
+const ADMIN_GRAPHQL = "2025-10";
 
 function normalizeShopDomain(shop) {
   const s = String(shop || "").trim();
