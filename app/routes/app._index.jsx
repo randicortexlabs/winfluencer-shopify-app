@@ -17,8 +17,7 @@ import { Sankey, Tooltip, Layer, Rectangle, Text as RText } from "recharts";
 export const loader = async ({ request }) => {
   const { authenticate } = await import("../shopify.server");
   const { default: db } = await import("../db.server");
-  // Theme snippet injection removed — using App Embed Block instead
-  // Custom Pixel is managed by shopify app deploy, not programmatically
+  const { installCustomPixel } = await import("../services/pixel.server");
   const {
     getStoreOverviewMetrics,
     getTopInfluencers,
@@ -55,6 +54,11 @@ export const loader = async ({ request }) => {
   // deprecated API usage on every page load.
 
   if (!store) throw new Response("Store not available", { status: 500 });
+
+  // Activate the web pixel extension for this merchant via webPixelCreate.
+  // This is required for every merchant — the extension won't fire until connected.
+  // Idempotent: if already connected, the mutation returns a userError which we silently ignore.
+  installCustomPixel(shop, accessToken, store.pixelId).catch(() => {});
 
   const [metrics, topInfluencers, allInfluencers, topProduct, sankeyData] = await Promise.all([
     getStoreOverviewMetrics(store.id),
