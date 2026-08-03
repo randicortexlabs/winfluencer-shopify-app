@@ -1,28 +1,3 @@
-import crypto from "crypto";
-
-function verifyProxyHmac(requestUrl, clientSecret) {
-  try {
-    const url = new URL(requestUrl);
-    const signature = url.searchParams.get("signature");
-    if (!signature) return false;
-
-    const pairs = [];
-    for (const [key, value] of url.searchParams.entries()) {
-      if (key !== "signature") pairs.push(`${key}=${value}`);
-    }
-    pairs.sort();
-
-    const digest = crypto
-      .createHmac("sha256", clientSecret)
-      .update(pairs.join("&"))
-      .digest("hex");
-
-    return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
-  } catch {
-    return false;
-  }
-}
-
 function sanitizeUrl(url) {
   if (!url) return "/";
   const str = String(url).trim();
@@ -43,21 +18,15 @@ function esc(str) {
 }
 
 export const loader = async ({ request }) => {
+  const { authenticate } = await import("../shopify.server");
   const { default: db } = await import("../db.server");
 
-  const url = new URL(request.url);
-  const shop = url.searchParams.get("shop");
+  // Use Shopify SDK for HMAC verification — handles all React Router _data param variants
+  const { session } = await authenticate.public.appProxy(request);
+  const shop = session?.shop ?? new URL(request.url).searchParams.get("shop");
 
   if (!shop) {
     return new Response("Bad request", { status: 400 });
-  }
-
-  // Verify Shopify App Proxy HMAC in production
-  if (process.env.NODE_ENV === "production") {
-    const secret = process.env.SHOPIFY_API_SECRET;
-    if (!secret || !verifyProxyHmac(request.url, secret)) {
-      return new Response("Unauthorized", { status: 401 });
-    }
   }
 
   const store = await db.store.findFirst({
