@@ -41,6 +41,8 @@ model Store {
   orders      Order[]
   teamMembers TeamMember[]
   touchpoints Touchpoint[]
+  linkHub     LinkHub?
+  hubSessions HubSession[]
 }
 
 model Campaign {
@@ -79,16 +81,17 @@ model Event {
   influencerId   String?
   influencer     Influencer? @relation(fields: [influencerId], references: [id])
   wfId           String?
-  sessionId      String
-  eventType      String
-  productId      String?
-  productTitle   String?
-  variantId      String?
-  variantTitle   String?
-  price          Float?
-  quantity       Int?
-  pageUrl        String?
-  timestamp      DateTime @default(now())
+  sessionId         String
+  eventType         String
+  productId         String?
+  productTitle      String?
+  variantId         String?
+  variantTitle      String?
+  price             Float?
+  quantity          Int?
+  pageUrl           String?
+  attributionSource String?
+  timestamp         DateTime @default(now())
 
   @@index([storeId, eventType])
   @@index([influencerId, eventType])
@@ -122,6 +125,34 @@ model TeamMember {
   acceptedAt DateTime?
 
   @@unique([storeId, email])
+}
+
+model LinkHub {
+  id           String      @id @default(cuid())
+  storeId      String      @unique
+  store        Store       @relation(fields: [storeId], references: [id])
+  enabled      Boolean     @default(false)
+  title        String?
+  destinations Json        @default("[]")
+  influencers  Json        @default("[]")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  sessions     HubSession[]
+}
+
+model HubSession {
+  id           String    @id @default(cuid())
+  storeId      String
+  store        Store     @relation(fields: [storeId], references: [id])
+  linkHubId    String
+  linkHub      LinkHub   @relation(fields: [linkHubId], references: [id])
+  selectedWfId String?
+  destination  String?
+  outcome      String    @default("abandoned")
+  createdAt    DateTime  @default(now())
+
+  @@index([storeId])
+  @@index([linkHubId])
 }
 
 model Touchpoint {

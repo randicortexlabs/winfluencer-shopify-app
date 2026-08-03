@@ -33,6 +33,11 @@ api_version = "2026-04"
   compliance_topics = [ "shop/redact" ]
   uri = "/webhooks/shop/redact"
 
+  # ── Orders ────────────────────────────────────────────────────────────────
+  [[webhooks.subscriptions]]
+  topics = [ "orders/created" ]
+  uri = "/webhooks/orders/created"
+
 [access_scopes]
 scopes = "read_customer_events,write_pixels"
 optional_scopes = [ ]
@@ -42,6 +47,6 @@ use_legacy_install_flow = false
 redirect_urls = [ "https://app.winfluencer.online/api/auth" ]
 
 [app_proxy]
-url = "https://app.winfluencer.online/api"
-subpath = "winfluencer"
-prefix = "apps"
+url = "https://app.winfluencer.online/hub"
+subpath = "creators"
+prefix = "a"
