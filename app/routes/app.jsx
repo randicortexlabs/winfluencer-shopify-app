@@ -111,6 +111,7 @@ export default function App() {
           <Link to="/app" rel="home">Dashboard</Link>
           <Link to="/app/campaigns">Campaigns</Link>
           <Link to="/app/products">Products</Link>
+          <Link to="/app/linkhub">Link Hub</Link>
           <Link to="/app/settings">Settings</Link>
         </NavMenu>
         {!appEmbedEnabled && <AppEmbedBanner shop={shop} />}
