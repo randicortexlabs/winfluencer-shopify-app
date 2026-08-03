@@ -22,8 +22,8 @@ export const loader = async ({ request }) => {
   const { default: db } = await import("../db.server");
 
   // Use Shopify SDK for HMAC verification — handles all React Router _data param variants
-  const { session } = await authenticate.public.appProxy(request);
-  const shop = session?.shop ?? new URL(request.url).searchParams.get("shop");
+  const { session: proxySession } = await authenticate.public.appProxy(request);
+  const shop = proxySession?.shop ?? new URL(request.url).searchParams.get("shop");
 
   if (!shop) {
     return new Response("Bad request", { status: 400 });
