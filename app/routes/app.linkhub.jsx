@@ -39,6 +39,19 @@ export const loader = async ({ request }) => {
     orderBy: { name: "asc" },
   });
 
+  // Hub metrics
+  const [total, tapped, escaped, tapsByWfId] = await Promise.all([
+    db.hubSession.count({ where: { linkHubId: linkHub.id } }),
+    db.hubSession.count({ where: { linkHubId: linkHub.id, outcome: "tapped" } }),
+    db.hubSession.count({ where: { linkHubId: linkHub.id, outcome: "escaped" } }),
+    db.hubSession.groupBy({
+      by: ["selectedWfId"],
+      where: { linkHubId: linkHub.id, outcome: "tapped", selectedWfId: { not: null } },
+      _count: true,
+      orderBy: { _count: { selectedWfId: "desc" } },
+    }),
+  ]);
+
   return {
     shop: store.shop,
     linkHub: {
@@ -48,6 +61,17 @@ export const loader = async ({ request }) => {
       influencers: Array.isArray(linkHub.influencers) ? linkHub.influencers : [],
     },
     allInfluencers: influencers,
+    hubMetrics: {
+      total,
+      tapped,
+      escaped,
+      abandoned: total - tapped - escaped,
+      completionRate: total > 0 ? ((tapped / total) * 100).toFixed(1) : "0.0",
+      tapsByWfId: tapsByWfId.reduce((acc, g) => {
+        if (g.selectedWfId) acc[g.selectedWfId] = g._count;
+        return acc;
+      }, {}),
+    },
   };
 };
 
@@ -88,7 +112,7 @@ export const action = async ({ request }) => {
 };
 
 export default function LinkHubPage() {
-  const { shop, linkHub, allInfluencers } = useLoaderData();
+  const { shop, linkHub, allInfluencers, hubMetrics } = useLoaderData();
   const actionData = useActionData();
 
   const [enabled, setEnabled] = useState(linkHub.enabled);
@@ -157,6 +181,53 @@ export default function LinkHubPage() {
         {actionData?.error && (
           <Layout.Section>
             <Banner tone="critical" title={actionData.error} />
+          </Layout.Section>
+        )}
+
+        {/* Hub metrics */}
+        {hubMetrics.total > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingSm" as="h2">Hub performance</Text>
+                <Divider />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
+                  <BlockStack gap="100">
+                    <Text as="p" tone="subdued" variant="bodySm">Total views</Text>
+                    <Text variant="headingLg" as="p">{hubMetrics.total.toLocaleString()}</Text>
+                  </BlockStack>
+                  <BlockStack gap="100">
+                    <Text as="p" tone="subdued" variant="bodySm">Influencer taps</Text>
+                    <Text variant="headingLg" as="p">{hubMetrics.tapped.toLocaleString()}</Text>
+                  </BlockStack>
+                  <BlockStack gap="100">
+                    <Text as="p" tone="subdued" variant="bodySm">Completion rate</Text>
+                    <Text variant="headingLg" as="p" tone="success">{hubMetrics.completionRate}%</Text>
+                  </BlockStack>
+                  <BlockStack gap="100">
+                    <Text as="p" tone="subdued" variant="bodySm">Abandoned</Text>
+                    <Text variant="headingLg" as="p">{hubMetrics.abandoned.toLocaleString()}</Text>
+                  </BlockStack>
+                </div>
+                {Object.keys(hubMetrics.tapsByWfId).length > 0 && (
+                  <>
+                    <Divider />
+                    <Text variant="bodySm" fontWeight="semibold" as="p">Taps per influencer</Text>
+                    <BlockStack gap="200">
+                      {allInfluencers
+                        .filter((inf) => hubMetrics.tapsByWfId[inf.wfId])
+                        .sort((a, b) => (hubMetrics.tapsByWfId[b.wfId] || 0) - (hubMetrics.tapsByWfId[a.wfId] || 0))
+                        .map((inf) => (
+                          <InlineStack key={inf.wfId} align="space-between" blockAlign="center">
+                            <Text as="p">{inf.name} <span style={{ color: "#8C9196" }}>@{inf.handle}</span></Text>
+                            <Badge tone="info">{hubMetrics.tapsByWfId[inf.wfId]} taps</Badge>
+                          </InlineStack>
+                        ))}
+                    </BlockStack>
+                  </>
+                )}
+              </BlockStack>
+            </Card>
           </Layout.Section>
         )}
 

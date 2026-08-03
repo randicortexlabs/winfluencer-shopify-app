@@ -41,7 +41,7 @@ function statusTone(status) {
 export const loader = async ({ request, params }) => {
   const { authenticate } = await import("../shopify.server");
   const { default: db } = await import("../db.server");
-  const { getCampaignStats, getCampaignSankeyData, getProductIntelligence, computeSignal } = await import("../services/analytics.server");
+  const { getCampaignStats, getCampaignSankeyData, getProductIntelligence, computeSignal, getCampaignHubTaps } = await import("../services/analytics.server");
 
   const { session } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
@@ -59,10 +59,11 @@ export const loader = async ({ request, params }) => {
     throw new Response("Campaign not found", { status: 404 });
   }
 
-  const [stats, sankeyData, products] = await Promise.all([
+  const [stats, sankeyData, products, hubTaps] = await Promise.all([
     getCampaignStats(campaign.id),
     getCampaignSankeyData(campaign.id),
     getProductIntelligence(store.id, { campaignId: campaign.id }),
+    getCampaignHubTaps(campaign.id),
   ]);
 
   // Get per-influencer stats
@@ -129,10 +130,12 @@ export const loader = async ({ request, params }) => {
       convRate: parseFloat(convRate),
       revenue,
       aov: parseFloat(aov),
+      hubTaps: hubTaps[inf.wfId] || 0,
     };
   });
 
-  return { campaign, stats, influencers, sankeyData, products };
+  const totalHubTaps = Object.values(hubTaps).reduce((s, n) => s + n, 0);
+  return { campaign, stats, influencers, sankeyData, products, totalHubTaps };
 };
 
 export const action = async ({ request, params }) => {
@@ -198,7 +201,7 @@ function signalTone(signal) {
 }
 
 export default function CampaignDetailPage() {
-  const { campaign, stats, influencers, sankeyData, products } = useLoaderData();
+  const { campaign, stats, influencers, sankeyData, products, totalHubTaps } = useLoaderData();
   const actionData = useActionData();
   const navigate = useNavigate();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -218,9 +221,9 @@ export default function CampaignDetailPage() {
         <button onClick={() => navigate("/app/campaigns")}>Back</button>
       </ui-title-bar>
       <Layout>
-        {/* 5 metric cards */}
+        {/* Metric cards */}
         <Layout.Section>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "14px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "14px" }}>
             <Card>
               <BlockStack gap="100">
                 <Text as="p" tone="subdued" variant="bodySm">Total revenue</Text>
@@ -251,6 +254,15 @@ export default function CampaignDetailPage() {
                 <Text variant="headingLg" as="p" tone="success">{stats.convRate}%</Text>
               </BlockStack>
             </Card>
+            <Card>
+              <BlockStack gap="100">
+                <InlineStack gap="100" blockAlign="center">
+                  <Text as="p" tone="subdued" variant="bodySm">Link Hub taps</Text>
+                  <Badge tone="info" size="small">Declared</Badge>
+                </InlineStack>
+                <Text variant="headingLg" as="p">{totalHubTaps.toLocaleString()}</Text>
+              </BlockStack>
+            </Card>
           </div>
         </Layout.Section>
 
@@ -272,7 +284,7 @@ export default function CampaignDetailPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #E1E3E5" }}>
-                      {["Influencer", "Tracking link", "Visitor sessions", "\u2192 Cart", "\u2192 Purchase", "Conv. rate", "Revenue", "AOV"].map((h) => (
+                      {["Influencer", "Tracking link", "Visitor sessions", "\u2192 Cart", "\u2192 Purchase", "Conv. rate", "Revenue", "AOV", "Hub taps"].map((h) => (
                         <th key={h} style={{ padding: "10px 12px", textAlign: h === "Influencer" || h === "Tracking link" ? "left" : "right", fontSize: "13px", fontWeight: 600, color: "#6D7175" }}>{h}</th>
                       ))}
                     </tr>
@@ -294,6 +306,13 @@ export default function CampaignDetailPage() {
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.convRate}%</td>
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.revenue)}</td>
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.aov)}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                          {inf.hubTaps > 0 ? (
+                            <Badge tone="info">{inf.hubTaps}</Badge>
+                          ) : (
+                            <span style={{ color: "#8C9196" }}>—</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

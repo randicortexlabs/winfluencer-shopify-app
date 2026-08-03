@@ -729,6 +729,56 @@ export async function getInfluencerRoleBreakdown(influencerId) {
   };
 }
 
+// ─── Link Hub metrics ─────────────────────────────────────────────────────────
+
+export async function getStoreHubMetrics(storeId) {
+  const linkHub = await db.linkHub.findUnique({ where: { storeId } });
+  if (!linkHub) return null;
+
+  const [total, tapped, escaped, byInfluencer] = await Promise.all([
+    db.hubSession.count({ where: { linkHubId: linkHub.id } }),
+    db.hubSession.count({ where: { linkHubId: linkHub.id, outcome: "tapped" } }),
+    db.hubSession.count({ where: { linkHubId: linkHub.id, outcome: "escaped" } }),
+    db.hubSession.groupBy({
+      by: ["selectedWfId"],
+      where: { linkHubId: linkHub.id, outcome: "tapped", selectedWfId: { not: null } },
+      _count: true,
+    }),
+  ]);
+
+  return {
+    total,
+    tapped,
+    escaped,
+    abandoned: total - tapped - escaped,
+    completionRate: total > 0 ? ((tapped / total) * 100).toFixed(1) : "0.0",
+    byWfId: byInfluencer.reduce((acc, g) => {
+      if (g.selectedWfId) acc[g.selectedWfId] = g._count;
+      return acc;
+    }, {}),
+  };
+}
+
+export async function getCampaignHubTaps(campaignId) {
+  const influencers = await db.influencer.findMany({
+    where: { campaignId },
+    select: { wfId: true },
+  });
+  const wfIds = influencers.map((i) => i.wfId);
+  if (wfIds.length === 0) return {};
+
+  const groups = await db.hubSession.groupBy({
+    by: ["selectedWfId"],
+    where: { selectedWfId: { in: wfIds }, outcome: "tapped" },
+    _count: true,
+  });
+
+  return groups.reduce((acc, g) => {
+    if (g.selectedWfId) acc[g.selectedWfId] = g._count;
+    return acc;
+  }, {});
+}
+
 // ─── Recent visitor journeys ──────────────────────────────────────────────────
 
 export async function getRecentJourneys(influencerId, limit = 10) {
