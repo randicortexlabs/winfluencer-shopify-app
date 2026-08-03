@@ -33,10 +33,6 @@ api_version = "2026-04"
   compliance_topics = [ "shop/redact" ]
   uri = "/webhooks/shop/redact"
 
-  # ── Orders ────────────────────────────────────────────────────────────────
-  [[webhooks.subscriptions]]
-  topics = [ "orders/created" ]
-  uri = "/webhooks/orders/created"
 
 [access_scopes]
 scopes = "read_customer_events,write_pixels"
