@@ -858,33 +858,46 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
 
 async function fetchShopifyOrders(shop, accessToken, since) {
   if (!accessToken) {
-    console.error("fetchShopifyOrders: accessToken is missing");
+    console.error("[wf] fetchShopifyOrders: accessToken is missing");
     return [];
   }
-  const sinceStr = since.toISOString();
+  const sinceStr = since.toISOString().split("T")[0];
   const allOrders = [];
-  let url = `https://${shop}/admin/api/2026-04/orders.json?status=any&created_at_min=${encodeURIComponent(sinceStr)}&limit=250`;
+  let cursor = null;
+  console.log(`[wf] fetchShopifyOrders: shop=${shop} since=${sinceStr}`);
 
-  while (url) {
-    const res = await fetch(url, {
-      headers: { "X-Shopify-Access-Token": accessToken },
+  do {
+    const afterArg = cursor ? `, after: "${cursor}"` : "";
+    // Request only non-PII fields (date + revenue total) to avoid protected customer data restriction
+    const query = `{ orders(first: 250${afterArg}, query: "created_at:>=${sinceStr}") { pageInfo { hasNextPage endCursor } edges { node { createdAt totalPriceSet { shopMoney { amount } } } } } }`;
+
+    const res = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
+      body: JSON.stringify({ query }),
     });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`Shopify orders REST API ${res.status}: ${body.slice(0, 200)}`);
-    }
+    if (!res.ok) throw new Error(`Shopify GraphQL ${res.status}`);
 
     const json = await res.json();
-    for (const order of json.orders || []) {
-      allOrders.push({ createdAt: order.created_at, totalPrice: order.total_price || "0" });
+    if (json.errors) {
+      console.error(`[wf] fetchShopifyOrders GraphQL errors: ${JSON.stringify(json.errors).slice(0, 400)}`);
+      break;
     }
 
-    const linkHeader = res.headers.get("Link") || "";
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    url = nextMatch ? nextMatch[1] : null;
-  }
+    const ordersData = json?.data?.orders;
+    if (!ordersData) {
+      console.error("[wf] fetchShopifyOrders: data.orders is null — check read_orders scope");
+      break;
+    }
 
+    for (const edge of ordersData.edges) {
+      allOrders.push({ createdAt: edge.node.createdAt, totalPrice: edge.node.totalPriceSet?.shopMoney?.amount || "0" });
+    }
+    cursor = ordersData.pageInfo?.hasNextPage ? ordersData.pageInfo.endCursor : null;
+  } while (cursor);
+
+  console.log(`[wf] fetchShopifyOrders: total ${allOrders.length} orders`);
   return allOrders;
 }
 
