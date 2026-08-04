@@ -787,7 +787,7 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
   const startDate = new Date(now);
   startDate.setDate(startDate.getDate() - WEEKS * 7);
 
-  const [earliestCampaign, attributedEvents, shopifyOrders] = await Promise.all([
+  const [earliestCampaign, attributedEvents, shopifyDays] = await Promise.all([
     db.campaign.findFirst({
       where: { storeId, startDate: { not: null } },
       orderBy: { startDate: "asc" },
@@ -797,8 +797,8 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
       where: { storeId, eventType: "item_purchased", influencerId: { not: null }, timestamp: { gte: startDate } },
       select: { timestamp: true, price: true, quantity: true },
     }),
-    fetchShopifyOrders(shop, accessToken, startDate).catch((err) => {
-      console.error("getStoreRevenueTrend: Shopify API error", err.message);
+    fetchShopifyDailyRevenue(shop, accessToken, startDate, now).catch((err) => {
+      console.error("getStoreRevenueTrend: Shopify Analytics error", err.message);
       return [];
     }),
   ]);
@@ -813,9 +813,9 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
 
     const label = weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-    const storeTotal = shopifyOrders
-      .filter((o) => { const d = new Date(o.createdAt); return d >= weekStart && d < weekEnd; })
-      .reduce((sum, o) => sum + parseFloat(o.totalPrice || 0), 0);
+    const storeTotal = shopifyDays
+      .filter((d) => { const date = new Date(d.date); return date >= weekStart && date < weekEnd; })
+      .reduce((sum, d) => sum + d.revenue, 0);
 
     const attributed = attributedEvents
       .filter((e) => { const d = new Date(e.timestamp); return d >= weekStart && d < weekEnd; })
@@ -856,49 +856,66 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
   return { weeks, campaignLaunchWeek, beforeAvg, afterAvg, pctChange, attributionPenetration };
 }
 
-async function fetchShopifyOrders(shop, accessToken, since) {
+async function fetchShopifyDailyRevenue(shop, accessToken, since, until) {
   if (!accessToken) {
-    console.error("[wf] fetchShopifyOrders: accessToken is missing");
+    console.error("[wf] fetchShopifyDailyRevenue: accessToken is missing");
     return [];
   }
+
   const sinceStr = since.toISOString().split("T")[0];
-  const allOrders = [];
-  let cursor = null;
-  console.log(`[wf] fetchShopifyOrders: shop=${shop} since=${sinceStr}`);
+  const untilStr = until.toISOString().split("T")[0];
 
-  do {
-    const afterArg = cursor ? `, after: "${cursor}"` : "";
-    // Request only non-PII fields (date + revenue total) to avoid protected customer data restriction
-    const query = `{ orders(first: 250${afterArg}, query: "created_at:>=${sinceStr}") { pageInfo { hasNextPage endCursor } edges { node { createdAt totalPriceSet { shopMoney { amount } } } } } }`;
+  // ShopifyQL aggregate query — returns daily gross sales totals with no individual order or customer data.
+  // Requires read_analytics scope only (no Protected Customer Data approval needed).
+  const shopifyql = `FROM sales SINCE ${sinceStr} UNTIL ${untilStr} DIMENSIONS BY day SELECT sum(gross_sales) AS daily_revenue ORDER BY day ASC`;
 
-    const res = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
-      body: JSON.stringify({ query }),
-    });
+  console.log(`[wf] fetchShopifyDailyRevenue: ${shopifyql}`);
 
-    if (!res.ok) throw new Error(`Shopify GraphQL ${res.status}`);
+  const res = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
+    body: JSON.stringify({
+      query: `{ shopifyqlQuery(query: ${JSON.stringify(shopifyql)}) { ... on TableResponse { tableData { rowData columns { name } } } ... on ParseErrorResponse { parseErrors { code message } } } }`,
+    }),
+  });
 
-    const json = await res.json();
-    if (json.errors) {
-      console.error(`[wf] fetchShopifyOrders GraphQL errors: ${JSON.stringify(json.errors).slice(0, 400)}`);
-      break;
-    }
+  if (!res.ok) throw new Error(`Shopify GraphQL ${res.status}`);
 
-    const ordersData = json?.data?.orders;
-    if (!ordersData) {
-      console.error("[wf] fetchShopifyOrders: data.orders is null — check read_orders scope");
-      break;
-    }
+  const json = await res.json();
 
-    for (const edge of ordersData.edges) {
-      allOrders.push({ createdAt: edge.node.createdAt, totalPrice: edge.node.totalPriceSet?.shopMoney?.amount || "0" });
-    }
-    cursor = ordersData.pageInfo?.hasNextPage ? ordersData.pageInfo.endCursor : null;
-  } while (cursor);
+  if (json.errors) {
+    console.error(`[wf] fetchShopifyDailyRevenue errors: ${JSON.stringify(json.errors).slice(0, 400)}`);
+    return [];
+  }
 
-  console.log(`[wf] fetchShopifyOrders: total ${allOrders.length} orders`);
-  return allOrders;
+  const result = json?.data?.shopifyqlQuery;
+
+  if (result?.parseErrors?.length > 0) {
+    console.error(`[wf] fetchShopifyDailyRevenue ShopifyQL parse errors: ${JSON.stringify(result.parseErrors)}`);
+    return [];
+  }
+
+  const tableData = result?.tableData;
+  if (!tableData) {
+    console.error("[wf] fetchShopifyDailyRevenue: no tableData — check read_analytics scope is granted");
+    return [];
+  }
+
+  const { columns, rowData } = tableData;
+  console.log(`[wf] fetchShopifyDailyRevenue: columns=${JSON.stringify(columns.map((c) => c.name))}, rows=${rowData?.length || 0}`);
+
+  const dayIdx = columns.findIndex((c) => c.name === "day");
+  const revenueIdx = columns.findIndex((c) => c.name === "daily_revenue");
+
+  if (dayIdx === -1 || revenueIdx === -1) {
+    console.error(`[wf] fetchShopifyDailyRevenue: unexpected columns: ${JSON.stringify(columns)}`);
+    return [];
+  }
+
+  return (rowData || []).map((row) => ({
+    date: row[dayIdx],
+    revenue: parseFloat(row[revenueIdx] || 0),
+  }));
 }
 
 // ─── Recent visitor journeys ──────────────────────────────────────────────────

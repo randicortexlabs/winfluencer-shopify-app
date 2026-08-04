@@ -35,7 +35,7 @@ api_version = "2026-04"
 
 
 [access_scopes]
-scopes = "read_customer_events,write_pixels,read_orders"
+scopes = "read_customer_events,write_pixels,read_orders,read_analytics"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
