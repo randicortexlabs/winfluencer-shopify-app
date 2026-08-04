@@ -875,7 +875,7 @@ async function fetchShopifyDailyRevenue(shop, accessToken, since, until) {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
     body: JSON.stringify({
-      query: `{ shopifyqlQuery(query: ${JSON.stringify(shopifyql)}) { ... on TableResponse { tableData { rowData columns { name } } } ... on ParseErrorResponse { parseErrors { code message } } } }`,
+      query: `{ shopifyqlQuery(query: ${JSON.stringify(shopifyql)}) { tableData { rowData columns { name } } parseErrors { code message } } }`,
     }),
   });
 
