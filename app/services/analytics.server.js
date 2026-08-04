@@ -857,31 +857,33 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
 }
 
 async function fetchShopifyOrders(shop, accessToken, since) {
-  const sinceStr = since.toISOString().split("T")[0];
+  if (!accessToken) {
+    console.error("fetchShopifyOrders: accessToken is missing");
+    return [];
+  }
+  const sinceStr = since.toISOString();
   const allOrders = [];
-  let cursor = null;
+  let url = `https://${shop}/admin/api/2026-04/orders.json?status=any&created_at_min=${encodeURIComponent(sinceStr)}&limit=250`;
 
-  do {
-    const afterArg = cursor ? `, after: "${cursor}"` : "";
-    const query = `{ orders(first: 250${afterArg}, query: "created_at:>=${sinceStr}") { pageInfo { hasNextPage endCursor } edges { node { createdAt totalPriceSet { shopMoney { amount } } } } } }`;
-
-    const res = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
-      body: JSON.stringify({ query }),
+  while (url) {
+    const res = await fetch(url, {
+      headers: { "X-Shopify-Access-Token": accessToken },
     });
 
-    if (!res.ok) throw new Error(`Shopify orders API ${res.status}`);
-    const json = await res.json();
-    const ordersData = json?.data?.orders;
-    if (!ordersData) break;
-
-    for (const edge of ordersData.edges) {
-      allOrders.push({ createdAt: edge.node.createdAt, totalPrice: edge.node.totalPriceSet?.shopMoney?.amount || "0" });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Shopify orders REST API ${res.status}: ${body.slice(0, 200)}`);
     }
 
-    cursor = ordersData.pageInfo?.hasNextPage ? ordersData.pageInfo.endCursor : null;
-  } while (cursor);
+    const json = await res.json();
+    for (const order of json.orders || []) {
+      allOrders.push({ createdAt: order.created_at, totalPrice: order.total_price || "0" });
+    }
+
+    const linkHeader = res.headers.get("Link") || "";
+    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+    url = nextMatch ? nextMatch[1] : null;
+  }
 
   return allOrders;
 }
