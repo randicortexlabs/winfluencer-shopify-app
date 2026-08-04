@@ -1,6 +1,7 @@
 import { Link, useLoaderData, useNavigate } from "react-router";
 import {
   Badge,
+  Banner,
   BlockStack,
   Button,
   Card,
@@ -331,7 +332,7 @@ export default function DashboardPage() {
         )}
 
         {/* Store revenue trend */}
-        {revenueTrend.weeks.some((w) => w.storeTotal > 0) && (
+        {revenueTrend.weeks.some((w) => w.storeTotal > 0 || w.attributed > 0) && (
           <Layout.Section>
             <Card>
               <BlockStack gap="400">
@@ -348,7 +349,15 @@ export default function DashboardPage() {
                   </InlineStack>
                 </InlineStack>
 
-                {revenueTrend.campaignLaunchWeek !== null && (
+                {!revenueTrend.weeks.some((w) => w.storeTotal > 0) && (
+                  <Banner tone="warning" title="Store revenue data not yet available">
+                    <Text as="p" variant="bodySm">
+                      The <strong>read_orders</strong> scope was just added. Re-open the app from your Shopify admin to complete authorization — store order data will appear after that.
+                    </Text>
+                  </Banner>
+                )}
+
+                {revenueTrend.campaignLaunchWeek !== null && revenueTrend.weeks.some((w) => w.storeTotal > 0) && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
                     {[
                       { label: "Avg. weekly revenue — before", value: revenueTrend.beforeAvg ? `$${revenueTrend.beforeAvg.toLocaleString()}` : "—", note: "pre-campaign baseline" },
