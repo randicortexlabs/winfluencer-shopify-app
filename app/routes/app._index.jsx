@@ -83,6 +83,12 @@ function platformTone(platform) {
   return "new";
 }
 
+function convRateColor(rate) {
+  if (rate >= 10) return "#008060";
+  if (rate >= 5) return "#916A00";
+  return "#8C9196";
+}
+
 function SankeyNode({ x, y, width, height, index, payload }) {
   const name = payload?.name || "";
   const funnelStages = ["Page View", "Product View", "Add to Cart", "Checkout", "Purchase"];
@@ -112,6 +118,15 @@ export default function DashboardPage() {
   const maxFunnel = Math.max(...funnelStages.map((s) => s.value), 1);
   const totalVisitors = funnel.visitors || 0;
   const uniqueVisitors = funnel.uniqueVisitors || 0;
+
+  const maxConvRate = Math.max(...allInfluencers.map((i) => parseFloat(i.convRate) || 0), 0.01);
+  const enrichedAll = allInfluencers.map((inf) => ({
+    ...inf,
+    revPerSession: inf.visitors > 0 ? inf.revenue / inf.visitors : 0,
+  }));
+  const paidCandidate = enrichedAll.length > 0
+    ? [...enrichedAll].sort((a, b) => b.revPerSession - a.revPerSession)[0]
+    : null;
 
   const comparisonRows = allInfluencers.map((inf) => [
     inf.name,
@@ -278,6 +293,40 @@ export default function DashboardPage() {
             </Card>
           </div>
         </Layout.Section>
+
+        {/* Paid amplification candidate callout */}
+        {paidCandidate && paidCandidate.visitors > 0 && (
+          <Layout.Section>
+            <div style={{ background: "#FFF0E5", border: "0.5px solid #E8854A", borderRadius: "8px", padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{ width: "34px", height: "34px", background: "#E8854A", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 2L9.8 6.5L15 7.3L11.5 10.7L12.4 16L8 13.5L3.6 16L4.5 10.7L1 7.3L6.2 6.5L8 2Z" fill="white" stroke="white" strokeWidth="0.5" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 600, color: "#B54708", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: "3px" }}>
+                    Top paid amplification candidate — this month
+                  </div>
+                  <div style={{ fontSize: "13px", fontWeight: 600 }}>
+                    {paidCandidate.name}{" "}
+                    <span style={{ fontSize: "12px", fontWeight: 400, color: "#202223" }}>
+                      · ${paidCandidate.revPerSession.toFixed(2)}/session · {paidCandidate.convRate}% conv. · {formatCurrency(paidCandidate.aov)} AOV
+                    </span>
+                  </div>
+                  {paidCandidate.visitors < 30 && (
+                    <div style={{ fontSize: "11px", color: "#6D7175", marginTop: "3px" }}>
+                      ⚠ Based on {paidCandidate.visitors} sessions — validate at small scale before increasing budget
+                    </div>
+                  )}
+                </div>
+              </div>
+              <Button url={`/app/campaigns/${paidCandidate.campaignId}`} variant="secondary">
+                View campaign →
+              </Button>
+            </div>
+          </Layout.Section>
+        )}
 
         {/* Funnel + Top influencers */}
         <Layout.Section>
@@ -447,7 +496,16 @@ export default function DashboardPage() {
                           <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.visitors}</td>
                           <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.addToCart}</td>
                           <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.purchases}</td>
-                          <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.convRate}%</td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "flex-end" }}>
+                              <span style={{ fontVariantNumeric: "tabular-nums", color: convRateColor(parseFloat(inf.convRate)), fontWeight: 600, minWidth: "38px", textAlign: "right" }}>
+                                {inf.convRate}%
+                              </span>
+                              <div style={{ width: "50px", height: "5px", backgroundColor: "#F1F2F3", borderRadius: "3px", overflow: "hidden" }}>
+                                <div style={{ width: `${Math.round((parseFloat(inf.convRate) / maxConvRate) * 100)}%`, height: "100%", backgroundColor: convRateColor(parseFloat(inf.convRate)), borderRadius: "3px" }} />
+                              </div>
+                            </div>
+                          </td>
                           <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.revenue)}</td>
                           <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.aov)}</td>
                           <td style={{ padding: "10px 12px" }}>

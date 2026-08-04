@@ -200,10 +200,30 @@ function signalTone(signal) {
   return undefined;
 }
 
+function convRateColor(rate) {
+  if (rate >= 10) return "#008060";
+  if (rate >= 5) return "#916A00";
+  return "#8C9196";
+}
+
 export default function CampaignDetailPage() {
   const { campaign, stats, influencers, sankeyData, products, totalHubTaps } = useLoaderData();
   const actionData = useActionData();
   const navigate = useNavigate();
+  const enrichedInfluencers = influencers.map((inf) => ({
+    ...inf,
+    revPerSession: inf.visitors > 0 ? inf.revenue / inf.visitors : 0,
+  }));
+  const maxRevPerSession = Math.max(...enrichedInfluencers.map((i) => i.revPerSession), 0.01);
+  const maxConvRate = Math.max(...enrichedInfluencers.map((i) => i.convRate), 0.01);
+  const maxRevenue = Math.max(...enrichedInfluencers.map((i) => i.revenue), 0.01);
+  const maxAov = Math.max(...enrichedInfluencers.map((i) => i.aov), 0.01);
+  const maxVisitors = Math.max(...enrichedInfluencers.map((i) => i.visitors), 1);
+  const sortedByRevPerSession = [...enrichedInfluencers].sort((a, b) => b.revPerSession - a.revPerSession);
+  const highestConvId = enrichedInfluencers.reduce((best, inf) => inf.convRate > (best?.convRate || 0) ? inf : best, null)?.id;
+  const highestAovId = enrichedInfluencers.reduce((best, inf) => inf.aov > (best?.aov || 0) ? inf : best, null)?.id;
+  const highestRevenueId = enrichedInfluencers.reduce((best, inf) => inf.revenue > (best?.revenue || 0) ? inf : best, null)?.id;
+
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newHandle, setNewHandle] = useState("");
@@ -266,6 +286,148 @@ export default function CampaignDetailPage() {
           </div>
         </Layout.Section>
 
+        {/* Creator at a glance */}
+        {enrichedInfluencers.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text variant="headingSm" as="h2">Creator performance at a glance</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      Bars show each metric relative to the top performer in this campaign
+                    </Text>
+                  </BlockStack>
+                  <Badge>Campaign avg {stats.convRate}% conv.</Badge>
+                </InlineStack>
+                <Divider />
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(enrichedInfluencers.length, 3)}, minmax(0, 1fr))`, gap: "12px" }}>
+                  {enrichedInfluencers.map((inf) => {
+                    const isTopConv = inf.id === highestConvId;
+                    const isTopAov = inf.id === highestAovId;
+                    const isTopRev = inf.id === highestRevenueId;
+                    const cc = convRateColor(inf.convRate);
+                    const hasSmallSample = inf.visitors > 0 && inf.visitors < 30;
+                    return (
+                      <div key={inf.id} style={{ border: `0.5px solid ${isTopConv ? "#008060" : "#E1E3E5"}`, borderRadius: "8px", padding: "14px", backgroundColor: isTopConv ? "#F1F8F5" : undefined }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "9px", marginBottom: "14px", paddingBottom: "12px", borderBottom: "0.5px solid #E1E3E5" }}>
+                          <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: isTopConv ? "#008060" : "#F0F0F0", color: isTopConv ? "#fff" : "#6D7175", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 700, flexShrink: 0 }}>
+                            {inf.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: "13px", fontWeight: 600 }}>{inf.name}</div>
+                            <div style={{ fontSize: "10px", color: "#6D7175" }}>@{inf.handle} · {inf.platform}</div>
+                          </div>
+                        </div>
+                        {[
+                          { label: "Sessions", value: inf.visitors, display: String(inf.visitors), pct: Math.round((inf.visitors / maxVisitors) * 100), color: "#2C6ECB", note: hasSmallSample ? "small sample" : null, noteColor: "#916A00" },
+                          { label: "Conv. rate", value: inf.convRate, display: `${inf.convRate}%`, pct: Math.round((inf.convRate / maxConvRate) * 100), color: cc, valueColor: cc },
+                          { label: "Revenue", value: inf.revenue, display: formatCurrency(inf.revenue), pct: Math.round((inf.revenue / maxRevenue) * 100), color: "#008060", valueColor: isTopRev ? "#008060" : undefined },
+                          { label: "AOV", value: inf.aov, display: formatCurrency(inf.aov), pct: Math.round((inf.aov / maxAov) * 100), color: "#E8854A" },
+                        ].map((m) => (
+                          <div key={m.label} style={{ marginBottom: "10px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                              <span style={{ fontSize: "10px", color: "#6D7175" }}>{m.label}</span>
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: m.valueColor, fontVariantNumeric: "tabular-nums" }}>
+                                {m.display}
+                                {m.note && <span style={{ fontSize: "10px", color: m.noteColor, marginLeft: "5px", fontWeight: 400 }}>{m.note}</span>}
+                              </span>
+                            </div>
+                            <div style={{ height: "5px", background: "#F1F2F3", borderRadius: "3px", overflow: "hidden" }}>
+                              <div style={{ width: `${m.pct}%`, height: "100%", background: m.color, borderRadius: "3px" }} />
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", paddingTop: "10px", borderTop: "0.5px solid #E1E3E5" }}>
+                          {isTopConv && <span style={{ display: "inline-flex", fontSize: "10px", fontWeight: 600, padding: "2px 8px", borderRadius: "20px", background: "#F1F8F5", color: "#008060" }}>Highest conv.</span>}
+                          {isTopAov && <span style={{ display: "inline-flex", fontSize: "10px", fontWeight: 600, padding: "2px 8px", borderRadius: "20px", background: "#F1F8F5", color: "#008060" }}>Highest AOV</span>}
+                          {inf.hubTaps > 0 && <span style={{ display: "inline-flex", fontSize: "10px", fontWeight: 600, padding: "2px 8px", borderRadius: "20px", background: "#EBF0FB", color: "#2C6ECB" }}>{inf.hubTaps} Hub tap{inf.hubTaps > 1 ? "s" : ""}</span>}
+                          {!isTopConv && !isTopAov && inf.hubTaps === 0 && <span style={{ fontSize: "10px", color: "#8C9196" }}>{inf.visitors} sessions</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+
+        {/* Paid amplification signals */}
+        {enrichedInfluencers.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text variant="headingSm" as="h2">Paid amplification signals</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      Ranked by revenue per session — the most reliable proxy for paid ad ROI. Use to guide Meta / TikTok Ads budget allocation.
+                    </Text>
+                  </BlockStack>
+                  <span style={{ display: "inline-flex", fontSize: "10px", fontWeight: 600, padding: "2px 10px", borderRadius: "20px", background: "#FFF0E5", color: "#B54708" }}>
+                    Organic → Paid proxy
+                  </span>
+                </InlineStack>
+                <Divider />
+                <BlockStack gap="300">
+                  {sortedByRevPerSession.map((inf, idx) => {
+                    const rank = idx + 1;
+                    const isTop = rank === 1;
+                    const isLow = rank === sortedByRevPerSession.length && inf.revPerSession < 5;
+                    const hasSmallSample = inf.visitors > 0 && inf.visitors < 30;
+                    const cc = convRateColor(inf.convRate);
+                    return (
+                      <div key={inf.id} style={{ border: `0.5px solid ${isTop ? "#008060" : "#E1E3E5"}`, borderRadius: "8px", padding: "14px", backgroundColor: isTop ? "#F1F8F5" : undefined, opacity: isLow ? 0.75 : 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
+                          <span style={{ display: "inline-flex", fontSize: "12px", fontWeight: 600, padding: "3px 10px", borderRadius: "20px", background: isTop ? "#F1F8F5" : "#F6F6F7", color: isTop ? "#008060" : "#6D7175" }}>#{rank}</span>
+                          <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: isTop ? "#008060" : "#F0F0F0", color: isTop ? "#fff" : "#6D7175", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 700, flexShrink: 0 }}>
+                            {inf.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: "13px", fontWeight: 600 }}>{inf.name}</div>
+                            <div style={{ fontSize: "10px", color: "#6D7175" }}>@{inf.handle} · {inf.platform}</div>
+                          </div>
+                          <span style={{ display: "inline-flex", fontSize: "10px", fontWeight: 600, padding: "2px 8px", borderRadius: "20px", background: hasSmallSample ? "#FFF8E5" : "#F1F8F5", color: hasSmallSample ? "#916A00" : "#008060" }}>
+                            {hasSmallSample ? `⚠ ${inf.visitors} sessions — small sample` : `✓ ${inf.visitors} sessions — reliable`}
+                          </span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "12px" }}>
+                          {[
+                            { label: "Rev / session", display: `$${inf.revPerSession.toFixed(2)}`, pct: Math.round((inf.revPerSession / maxRevPerSession) * 100), barColor: "#2C6ECB", valueColor: isTop ? "#008060" : undefined },
+                            { label: "Conv. rate", display: `${inf.convRate}%`, pct: Math.round((inf.convRate / maxConvRate) * 100), barColor: cc, valueColor: cc },
+                            { label: "AOV", display: formatCurrency(inf.aov), pct: Math.round((inf.aov / maxAov) * 100), barColor: "#E8854A" },
+                            { label: "Sessions", display: String(inf.visitors), note: hasSmallSample ? "Validate before scaling" : "Solid sample size", noteColor: hasSmallSample ? "#916A00" : "#008060", valueColor: hasSmallSample ? "#916A00" : "#008060" },
+                          ].map((m) => (
+                            <div key={m.label}>
+                              <div style={{ fontSize: "10px", color: "#6D7175", marginBottom: "4px" }}>{m.label}</div>
+                              <div style={{ fontSize: "16px", fontWeight: 600, color: m.valueColor, fontVariantNumeric: "tabular-nums" }}>{m.display}</div>
+                              {m.pct !== undefined ? (
+                                <div style={{ height: "4px", background: "#F1F2F3", borderRadius: "3px", overflow: "hidden", marginTop: "5px" }}>
+                                  <div style={{ width: `${m.pct}%`, height: "100%", background: m.barColor, borderRadius: "3px" }} />
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: "10px", color: m.noteColor, marginTop: "3px" }}>{m.note}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </BlockStack>
+                <div style={{ display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "11px", color: "#2C6ECB", lineHeight: "1.55", background: "#EBF0FB", border: "0.5px solid #2C6ECB", borderRadius: "6px", padding: "10px 13px" }}>
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0, marginTop: "1px" }}>
+                    <circle cx="6.5" cy="6.5" r="6" stroke="currentColor" strokeWidth="1.1"/>
+                    <path d="M6.5 5.5v3.5M6.5 4v.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  </svg>
+                  <span><strong>How to read this:</strong> Revenue per session = total revenue ÷ sessions for that creator. It captures both conversion rate and order value in one number — the higher it is, the more each paid click is worth. Always weigh against sample size before scaling spend.</span>
+                </div>
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+
         {/* Influencer breakdown table */}
         <Layout.Section>
           <Card>
@@ -303,7 +465,16 @@ export default function CampaignDetailPage() {
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.visitors}</td>
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.cart} ({inf.cartPct}%)</td>
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.purchases} ({inf.purchasePct}%)</td>
-                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{inf.convRate}%</td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "flex-end" }}>
+                            <span style={{ fontVariantNumeric: "tabular-nums", color: convRateColor(inf.convRate), fontWeight: 600, minWidth: "38px", textAlign: "right" }}>
+                              {inf.convRate}%
+                            </span>
+                            <div style={{ width: "50px", height: "5px", backgroundColor: "#F1F2F3", borderRadius: "3px", overflow: "hidden" }}>
+                              <div style={{ width: `${Math.round((inf.convRate / maxConvRate) * 100)}%`, height: "100%", backgroundColor: convRateColor(inf.convRate), borderRadius: "3px" }} />
+                            </div>
+                          </div>
+                        </td>
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.revenue)}</td>
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatCurrency(inf.aov)}</td>
                         <td style={{ padding: "10px 12px", textAlign: "right" }}>
