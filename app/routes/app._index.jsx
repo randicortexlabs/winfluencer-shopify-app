@@ -12,7 +12,7 @@ import {
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { Sankey, Tooltip, Layer, Rectangle, Text as RText } from "recharts";
+import { Sankey, Tooltip, Layer, Rectangle, Text as RText, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine } from "recharts";
 
 export const loader = async ({ request }) => {
   const { authenticate } = await import("../shopify.server");
@@ -24,6 +24,7 @@ export const loader = async ({ request }) => {
     getInfluencerComparison,
     getTopProduct,
     getSankeyData,
+    getStoreRevenueTrend,
   } = await import("../services/analytics.server");
 
   const { session } = await authenticate.admin(request);
@@ -60,15 +61,16 @@ export const loader = async ({ request }) => {
   // Idempotent: if already connected, the mutation returns a userError which we silently ignore.
   installCustomPixel(shop, accessToken, store.pixelId).catch(() => {});
 
-  const [metrics, topInfluencers, allInfluencers, topProduct, sankeyData] = await Promise.all([
+  const [metrics, topInfluencers, allInfluencers, topProduct, sankeyData, revenueTrend] = await Promise.all([
     getStoreOverviewMetrics(store.id),
     getTopInfluencers(store.id, 5),
     getInfluencerComparison(store.id),
     getTopProduct(store.id),
     getSankeyData(store.id),
+    getStoreRevenueTrend(store.id, shop, accessToken),
   ]);
 
-  return { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct, sankeyData };
+  return { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct, sankeyData, revenueTrend };
 };
 
 function formatCurrency(val) {
@@ -104,7 +106,7 @@ function SankeyNode({ x, y, width, height, index, payload }) {
 }
 
 export default function DashboardPage() {
-  const { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct, sankeyData } = useLoaderData();
+  const { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct, sankeyData, revenueTrend } = useLoaderData();
   const navigate = useNavigate();
   const { funnel } = metrics;
 
@@ -325,6 +327,78 @@ export default function DashboardPage() {
                 View campaign →
               </Button>
             </div>
+          </Layout.Section>
+        )}
+
+        {/* Store revenue trend */}
+        {revenueTrend.weeks.some((w) => w.storeTotal > 0) && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text variant="headingSm" as="h2">Store revenue trend vs. attributed revenue</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      Total Shopify orders (gray) alongside influencer-attributed revenue (orange) — last 20 weeks
+                    </Text>
+                  </BlockStack>
+                  <InlineStack gap="200">
+                    <InlineStack gap="100" blockAlign="center"><div style={{ width: "10px", height: "10px", borderRadius: "2px", background: "#B0BEC5" }} /><Text as="p" variant="bodySm" tone="subdued">Store total</Text></InlineStack>
+                    <InlineStack gap="100" blockAlign="center"><div style={{ width: "10px", height: "10px", borderRadius: "2px", background: "#E8854A" }} /><Text as="p" variant="bodySm" tone="subdued">Attributed</Text></InlineStack>
+                  </InlineStack>
+                </InlineStack>
+
+                {revenueTrend.campaignLaunchWeek !== null && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
+                    {[
+                      { label: "Avg. weekly revenue — before", value: revenueTrend.beforeAvg ? `$${revenueTrend.beforeAvg.toLocaleString()}` : "—", note: "pre-campaign baseline" },
+                      { label: "Avg. weekly revenue — after", value: revenueTrend.afterAvg ? `$${revenueTrend.afterAvg.toLocaleString()}` : "—", note: revenueTrend.beforeAvg && revenueTrend.afterAvg ? `↑ +$${(revenueTrend.afterAvg - revenueTrend.beforeAvg).toLocaleString()}/week` : "since launch", positive: true },
+                      { label: "Store revenue change", value: revenueTrend.pctChange !== null ? `${revenueTrend.pctChange > 0 ? "+" : ""}${revenueTrend.pctChange}%` : "—", note: "since campaign launch", accent: true },
+                      { label: "Attribution penetration", value: revenueTrend.attributionPenetration !== null ? `${revenueTrend.attributionPenetration}%` : "—", note: "of post-launch revenue tracked", orange: true },
+                    ].map((s) => (
+                      <div key={s.label} style={{ background: "#F6F6F7", borderRadius: "8px", padding: "10px 12px" }}>
+                        <div style={{ fontSize: "10px", color: "#6D7175", marginBottom: "4px" }}>{s.label}</div>
+                        <div style={{ fontSize: "17px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: s.accent ? "#008060" : s.orange ? "#E8854A" : undefined }}>{s.value}</div>
+                        <div style={{ fontSize: "10px", color: s.positive ? "#008060" : "#6D7175", marginTop: "3px" }}>{s.note}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ width: "100%", height: "200px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={revenueTrend.weeks} margin={{ top: 5, right: 10, left: 0, bottom: 5 }} barGap={2} barCategoryGap="20%">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F2F3" vertical={false} />
+                      <XAxis dataKey="week" tick={{ fontSize: 9, fill: "#6D7175" }} tickLine={false} axisLine={false} interval={3} />
+                      <YAxis tick={{ fontSize: 9, fill: "#6D7175" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={38} />
+                      <Tooltip
+                        contentStyle={{ fontSize: "12px", borderRadius: "6px", border: "0.5px solid #E1E3E5" }}
+                        formatter={(value, name) => [`$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, name === "storeTotal" ? "Store total" : "Attributed"]}
+                      />
+                      <Bar dataKey="storeTotal" fill="#B0BEC5" radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="attributed" fill="#E8854A" radius={[2, 2, 0, 0]} />
+                      {revenueTrend.campaignLaunchWeek !== null && revenueTrend.weeks[revenueTrend.campaignLaunchWeek] && (
+                        <ReferenceLine
+                          x={revenueTrend.weeks[revenueTrend.campaignLaunchWeek].week}
+                          stroke="#2C6ECB"
+                          strokeWidth={1.5}
+                          strokeDasharray="4 3"
+                          label={{ value: "Campaign launch", position: "insideTopLeft", fontSize: 9, fill: "#2C6ECB", dy: -4 }}
+                        />
+                      )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div style={{ display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "11px", color: "#2C6ECB", lineHeight: "1.5", background: "#EBF0FB", border: "0.5px solid #2C6ECB", borderRadius: "6px", padding: "10px 13px" }}>
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0, marginTop: "1px" }}>
+                    <circle cx="6.5" cy="6.5" r="6" stroke="currentColor" strokeWidth="1.1"/>
+                    <path d="M6.5 5.5v3.5M6.5 4v.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  </svg>
+                  <span>This shows correlation, not causation. Seasonality and other marketing may also contribute — this is context for your decisions.</span>
+                </div>
+              </BlockStack>
+            </Card>
           </Layout.Section>
         )}
 

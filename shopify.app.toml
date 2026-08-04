@@ -20,6 +20,11 @@ api_version = "2026-04"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  # ── Orders ───────────────────────────────────────────────────────────────
+  [[webhooks.subscriptions]]
+  topics = [ "orders/created" ]
+  uri = "/webhooks/orders/created"
+
   # ── GDPR (mandatory for App Store) ────────────────────────────────────────
   [[webhooks.subscriptions]]
   compliance_topics = [ "customers/data_request" ]
@@ -35,7 +40,7 @@ api_version = "2026-04"
 
 
 [access_scopes]
-scopes = "read_customer_events,write_pixels"
+scopes = "read_customer_events,write_pixels,read_orders"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

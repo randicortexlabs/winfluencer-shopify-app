@@ -779,6 +779,113 @@ export async function getCampaignHubTaps(campaignId) {
   }, {});
 }
 
+// ─── Store revenue trend ─────────────────────────────────────────────────────
+
+export async function getStoreRevenueTrend(storeId, shop, accessToken) {
+  const WEEKS = 20;
+  const now = new Date();
+  const startDate = new Date(now);
+  startDate.setDate(startDate.getDate() - WEEKS * 7);
+
+  const [earliestCampaign, attributedEvents, shopifyOrders] = await Promise.all([
+    db.campaign.findFirst({
+      where: { storeId, startDate: { not: null } },
+      orderBy: { startDate: "asc" },
+      select: { startDate: true },
+    }),
+    db.event.findMany({
+      where: { storeId, eventType: "item_purchased", influencerId: { not: null }, timestamp: { gte: startDate } },
+      select: { timestamp: true, price: true, quantity: true },
+    }),
+    fetchShopifyOrders(shop, accessToken, startDate).catch((err) => {
+      console.error("getStoreRevenueTrend: Shopify API error", err.message);
+      return [];
+    }),
+  ]);
+
+  // Build weekly buckets
+  const weeks = [];
+  for (let i = 0; i < WEEKS; i++) {
+    const weekStart = new Date(startDate);
+    weekStart.setDate(weekStart.getDate() + i * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    const label = weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+    const storeTotal = shopifyOrders
+      .filter((o) => { const d = new Date(o.createdAt); return d >= weekStart && d < weekEnd; })
+      .reduce((sum, o) => sum + parseFloat(o.totalPrice || 0), 0);
+
+    const attributed = attributedEvents
+      .filter((e) => { const d = new Date(e.timestamp); return d >= weekStart && d < weekEnd; })
+      .reduce((sum, e) => sum + parseFloat(e.price || 0) * (e.quantity || 1), 0);
+
+    weeks.push({ week: label, storeTotal: Math.round(storeTotal * 100) / 100, attributed: Math.round(attributed * 100) / 100 });
+  }
+
+  // Find campaign launch week index
+  let campaignLaunchWeek = null;
+  if (earliestCampaign?.startDate) {
+    const launchDate = new Date(earliestCampaign.startDate);
+    for (let i = 0; i < WEEKS; i++) {
+      const weekStart = new Date(startDate);
+      weekStart.setDate(weekStart.getDate() + i * 7);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      if (launchDate >= weekStart && launchDate < weekEnd) { campaignLaunchWeek = i; break; }
+    }
+    if (campaignLaunchWeek === null && new Date(earliestCampaign.startDate) < startDate) {
+      campaignLaunchWeek = 0;
+    }
+  }
+
+  // Before / after averages
+  let beforeAvg = null, afterAvg = null, pctChange = null, attributionPenetration = null;
+  if (campaignLaunchWeek !== null) {
+    const beforeWeeks = weeks.slice(0, campaignLaunchWeek).filter((w) => w.storeTotal > 0);
+    const afterWeeks  = weeks.slice(campaignLaunchWeek).filter((w) => w.storeTotal > 0);
+    if (beforeWeeks.length > 0) beforeAvg = Math.round(beforeWeeks.reduce((s, w) => s + w.storeTotal, 0) / beforeWeeks.length);
+    if (afterWeeks.length > 0)  afterAvg  = Math.round(afterWeeks.reduce((s, w) => s + w.storeTotal, 0) / afterWeeks.length);
+    if (beforeAvg && afterAvg)  pctChange = Math.round(((afterAvg - beforeAvg) / beforeAvg) * 100);
+    const totalAfterRevenue = afterWeeks.reduce((s, w) => s + w.storeTotal, 0);
+    const totalAfterAttributed = afterWeeks.reduce((s, w) => s + w.attributed, 0);
+    if (totalAfterRevenue > 0) attributionPenetration = Math.round((totalAfterAttributed / totalAfterRevenue) * 100);
+  }
+
+  return { weeks, campaignLaunchWeek, beforeAvg, afterAvg, pctChange, attributionPenetration };
+}
+
+async function fetchShopifyOrders(shop, accessToken, since) {
+  const sinceStr = since.toISOString().split("T")[0];
+  const allOrders = [];
+  let cursor = null;
+
+  do {
+    const afterArg = cursor ? `, after: "${cursor}"` : "";
+    const query = `{ orders(first: 250${afterArg}, query: "created_at:>=${sinceStr}") { pageInfo { hasNextPage endCursor } edges { node { createdAt totalPriceSet { shopMoney { amount } } } } } }`;
+
+    const res = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!res.ok) throw new Error(`Shopify orders API ${res.status}`);
+    const json = await res.json();
+    const ordersData = json?.data?.orders;
+    if (!ordersData) break;
+
+    for (const edge of ordersData.edges) {
+      allOrders.push({ createdAt: edge.node.createdAt, totalPrice: edge.node.totalPriceSet?.shopMoney?.amount || "0" });
+    }
+
+    cursor = ordersData.pageInfo?.hasNextPage ? ordersData.pageInfo.endCursor : null;
+  } while (cursor);
+
+  return allOrders;
+}
+
 // ─── Recent visitor journeys ──────────────────────────────────────────────────
 
 export async function getRecentJourneys(influencerId, limit = 10) {
