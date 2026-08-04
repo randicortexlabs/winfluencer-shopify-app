@@ -1,7 +1,6 @@
 import { Link, useLoaderData, useNavigate } from "react-router";
 import {
   Badge,
-  Banner,
   BlockStack,
   Button,
   Card,
@@ -346,33 +345,44 @@ export default function DashboardPage() {
                   <InlineStack gap="200">
                     <InlineStack gap="100" blockAlign="center"><div style={{ width: "10px", height: "10px", borderRadius: "2px", background: "#B0BEC5" }} /><Text as="p" variant="bodySm" tone="subdued">Store total</Text></InlineStack>
                     <InlineStack gap="100" blockAlign="center"><div style={{ width: "10px", height: "10px", borderRadius: "2px", background: "#E8854A" }} /><Text as="p" variant="bodySm" tone="subdued">Attributed</Text></InlineStack>
+                    {revenueTrend.campaignLaunchWeek !== null && (
+                      <InlineStack gap="100" blockAlign="center"><div style={{ width: "10px", height: "2px", background: "#2C6ECB" }} /><Text as="p" variant="bodySm" tone="subdued">Campaign launch</Text></InlineStack>
+                    )}
                   </InlineStack>
                 </InlineStack>
 
-                {!revenueTrend.weeks.some((w) => w.storeTotal > 0) && (
-                  <Banner tone="warning" title="Store revenue data not yet available">
-                    <Text as="p" variant="bodySm">
-                      The <strong>read_orders</strong> scope was just added. Re-open the app from your Shopify admin to complete authorization — store order data will appear after that.
-                    </Text>
-                  </Banner>
-                )}
-
-                {revenueTrend.campaignLaunchWeek !== null && revenueTrend.weeks.some((w) => w.storeTotal > 0) && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
-                    {[
-                      { label: "Avg. weekly revenue — before", value: revenueTrend.beforeAvg ? `$${revenueTrend.beforeAvg.toLocaleString()}` : "—", note: "pre-campaign baseline" },
-                      { label: "Avg. weekly revenue — after", value: revenueTrend.afterAvg ? `$${revenueTrend.afterAvg.toLocaleString()}` : "—", note: revenueTrend.beforeAvg && revenueTrend.afterAvg ? `↑ +$${(revenueTrend.afterAvg - revenueTrend.beforeAvg).toLocaleString()}/week` : "since launch", positive: true },
-                      { label: "Store revenue change", value: revenueTrend.pctChange !== null ? `${revenueTrend.pctChange > 0 ? "+" : ""}${revenueTrend.pctChange}%` : "—", note: "since campaign launch", accent: true },
-                      { label: "Attribution penetration", value: revenueTrend.attributionPenetration !== null ? `${revenueTrend.attributionPenetration}%` : "—", note: "of post-launch revenue tracked", orange: true },
-                    ].map((s) => (
-                      <div key={s.label} style={{ background: "#F6F6F7", borderRadius: "8px", padding: "10px 12px" }}>
-                        <div style={{ fontSize: "10px", color: "#6D7175", marginBottom: "4px" }}>{s.label}</div>
-                        <div style={{ fontSize: "17px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: s.accent ? "#008060" : s.orange ? "#E8854A" : undefined }}>{s.value}</div>
-                        <div style={{ fontSize: "10px", color: s.positive ? "#008060" : "#6D7175", marginTop: "3px" }}>{s.note}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {revenueTrend.campaignLaunchWeek !== null && (() => {
+                  const hasStoreData = revenueTrend.weeks.some((w) => w.storeTotal > 0);
+                  const totalAttributed = revenueTrend.weeks.reduce((s, w) => s + w.attributed, 0);
+                  const postLaunchWeeks = revenueTrend.weeks.slice(revenueTrend.campaignLaunchWeek).filter((w) => w.attributed > 0);
+                  const postLaunchAvg = postLaunchWeeks.length > 0
+                    ? Math.round(postLaunchWeeks.reduce((s, w) => s + w.attributed, 0) / postLaunchWeeks.length)
+                    : null;
+                  const scorecards = hasStoreData
+                    ? [
+                        { label: "Avg. weekly revenue — before", value: revenueTrend.beforeAvg ? `$${revenueTrend.beforeAvg.toLocaleString()}` : "—", note: "pre-campaign baseline" },
+                        { label: "Avg. weekly revenue — after", value: revenueTrend.afterAvg ? `$${revenueTrend.afterAvg.toLocaleString()}` : "—", note: revenueTrend.beforeAvg && revenueTrend.afterAvg ? `↑ +$${(revenueTrend.afterAvg - revenueTrend.beforeAvg).toLocaleString()}/week` : "since launch", positive: true },
+                        { label: "Store revenue change", value: revenueTrend.pctChange !== null ? `${revenueTrend.pctChange > 0 ? "+" : ""}${revenueTrend.pctChange}%` : "—", note: "since campaign launch", accent: true },
+                        { label: "Attribution penetration", value: revenueTrend.attributionPenetration !== null ? `${revenueTrend.attributionPenetration}%` : "—", note: "of post-launch revenue tracked", orange: true },
+                      ]
+                    : [
+                        { label: "Total attributed revenue", value: `$${Math.round(totalAttributed).toLocaleString()}`, note: "influencer-driven sales", orange: true },
+                        { label: "Avg. weekly attributed", value: postLaunchAvg ? `$${postLaunchAvg.toLocaleString()}` : "—", note: "post-launch avg per active week", positive: true },
+                        { label: "Store baseline — before", value: "—", note: "awaiting store order data" },
+                        { label: "Store lift vs baseline", value: "—", note: "awaiting store order data" },
+                      ];
+                  return (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
+                      {scorecards.map((s) => (
+                        <div key={s.label} style={{ background: "#F6F6F7", borderRadius: "8px", padding: "10px 12px" }}>
+                          <div style={{ fontSize: "10px", color: "#6D7175", marginBottom: "4px" }}>{s.label}</div>
+                          <div style={{ fontSize: "17px", fontWeight: 600, fontVariantNumeric: "tabular-nums", color: s.accent ? "#008060" : s.orange ? "#E8854A" : undefined }}>{s.value}</div>
+                          <div style={{ fontSize: "10px", color: s.positive ? "#008060" : "#6D7175", marginTop: "3px" }}>{s.note}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 <div style={{ width: "100%", height: "200px" }}>
                   <ResponsiveContainer width="100%" height="100%">
