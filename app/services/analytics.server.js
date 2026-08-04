@@ -865,9 +865,9 @@ async function fetchShopifyDailyRevenue(shop, accessToken, since, until) {
   const sinceStr = since.toISOString().split("T")[0];
   const untilStr = until.toISOString().split("T")[0];
 
-  // ShopifyQL aggregate query — returns daily gross sales totals with no individual order or customer data.
-  // Requires read_analytics scope only (no Protected Customer Data approval needed).
-  const shopifyql = `FROM sales SINCE ${sinceStr} UNTIL ${untilStr} DIMENSIONS BY day SELECT sum(gross_sales) AS daily_revenue ORDER BY day ASC`;
+  // ShopifyQL aggregate query — daily gross sales totals, no PII.
+  // Requires read_analytics scope only (no Protected Customer Data approval).
+  const shopifyql = `FROM sales SINCE ${sinceStr} UNTIL ${untilStr} SHOW gross_sales TIMESERIES day`;
 
   console.log(`[wf] fetchShopifyDailyRevenue: ${shopifyql}`);
 
@@ -875,7 +875,7 @@ async function fetchShopifyDailyRevenue(shop, accessToken, since, until) {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
     body: JSON.stringify({
-      query: `{ shopifyqlQuery(query: ${JSON.stringify(shopifyql)}) { tableData { rowData columns { name } } parseErrors { code message } } }`,
+      query: `{ shopifyqlQuery(query: ${JSON.stringify(shopifyql)}) { tableData { rows columns { name } } parseErrors } }`,
     }),
   });
 
@@ -901,20 +901,13 @@ async function fetchShopifyDailyRevenue(shop, accessToken, since, until) {
     return [];
   }
 
-  const { columns, rowData } = tableData;
-  console.log(`[wf] fetchShopifyDailyRevenue: columns=${JSON.stringify(columns.map((c) => c.name))}, rows=${rowData?.length || 0}`);
+  const { rows } = tableData;
+  console.log(`[wf] fetchShopifyDailyRevenue: rows=${rows?.length || 0}`);
 
-  const dayIdx = columns.findIndex((c) => c.name === "day");
-  const revenueIdx = columns.findIndex((c) => c.name === "daily_revenue");
-
-  if (dayIdx === -1 || revenueIdx === -1) {
-    console.error(`[wf] fetchShopifyDailyRevenue: unexpected columns: ${JSON.stringify(columns)}`);
-    return [];
-  }
-
-  return (rowData || []).map((row) => ({
-    date: row[dayIdx],
-    revenue: parseFloat(row[revenueIdx] || 0),
+  // rows are objects: { day: "2026-06-01", gross_sales: "262.15" }
+  return (rows || []).map((row) => ({
+    date: row.day,
+    revenue: parseFloat(row.gross_sales || 0),
   }));
 }
 
