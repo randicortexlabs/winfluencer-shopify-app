@@ -781,21 +781,25 @@ export async function getCampaignHubTaps(campaignId) {
 
 // ─── Store revenue trend ─────────────────────────────────────────────────────
 
-export async function getStoreRevenueTrend(storeId) {
+export async function getStoreRevenueTrend(storeId, shop, accessToken) {
   const WEEKS = 20;
   const now = new Date();
   const startDate = new Date(now);
   startDate.setDate(startDate.getDate() - WEEKS * 7);
 
-  const [earliestCampaign, allPurchaseEvents] = await Promise.all([
+  const [earliestCampaign, attributedEvents, shopifyDays] = await Promise.all([
     db.campaign.findFirst({
       where: { storeId, startDate: { not: null } },
       orderBy: { startDate: "asc" },
       select: { startDate: true },
     }),
     db.event.findMany({
-      where: { storeId, eventType: "item_purchased", timestamp: { gte: startDate } },
-      select: { timestamp: true, price: true, quantity: true, influencerId: true },
+      where: { storeId, eventType: "item_purchased", influencerId: { not: null }, timestamp: { gte: startDate } },
+      select: { timestamp: true, price: true, quantity: true },
+    }),
+    fetchShopifyDailyRevenue(shop, accessToken, startDate, now).catch((err) => {
+      console.error("getStoreRevenueTrend: Shopify Analytics error", err.message);
+      return [];
     }),
   ]);
 
@@ -809,15 +813,12 @@ export async function getStoreRevenueTrend(storeId) {
 
     const label = weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-    const weekEvents = allPurchaseEvents.filter((e) => {
-      const d = new Date(e.timestamp);
-      return d >= weekStart && d < weekEnd;
-    });
+    const storeTotal = shopifyDays
+      .filter((d) => { const date = new Date(d.date); return date >= weekStart && date < weekEnd; })
+      .reduce((sum, d) => sum + d.revenue, 0);
 
-    const storeTotal = weekEvents.reduce((sum, e) => sum + parseFloat(e.price || 0) * (e.quantity || 1), 0);
-
-    const attributed = weekEvents
-      .filter((e) => e.influencerId)
+    const attributed = attributedEvents
+      .filter((e) => { const d = new Date(e.timestamp); return d >= weekStart && d < weekEnd; })
       .reduce((sum, e) => sum + parseFloat(e.price || 0) * (e.quantity || 1), 0);
 
     weeks.push({ week: label, storeTotal: Math.round(storeTotal * 100) / 100, attributed: Math.round(attributed * 100) / 100 });

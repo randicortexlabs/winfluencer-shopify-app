@@ -67,7 +67,7 @@ export const loader = async ({ request }) => {
     getInfluencerComparison(store.id),
     getTopProduct(store.id),
     getSankeyData(store.id),
-    getStoreRevenueTrend(store.id),
+    getStoreRevenueTrend(store.id, shop, accessToken),
   ]);
 
   return { store, isNewInstall, metrics, topInfluencers, allInfluencers, topProduct, sankeyData, revenueTrend };
