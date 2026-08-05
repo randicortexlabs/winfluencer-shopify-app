@@ -330,7 +330,7 @@ export default function LinkHubPage() {
                     value={screen2Title}
                     onChange={setScreen2Title}
                     placeholder="Shout out your creator!"
-                    helpText="Default: \"Shout out your creator!\""
+                    helpText='Default: "Shout out your creator!"'
                     autoComplete="off"
                     maxLength={80}
                     showCharacterCount
@@ -340,7 +340,7 @@ export default function LinkHubPage() {
                     value={screen2Subtitle}
                     onChange={setScreen2Subtitle}
                     placeholder="Who introduced you to us? Give them credit — it helps them out!"
-                    helpText="Default: \"Who introduced you to us? Give them credit — it helps them out!\""
+                    helpText='Default: "Who introduced you to us? Give them credit — it helps them out!"'
                     autoComplete="off"
                     maxLength={160}
                     showCharacterCount
