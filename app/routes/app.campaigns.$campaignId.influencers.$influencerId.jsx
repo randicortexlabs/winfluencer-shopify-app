@@ -11,6 +11,7 @@ import {
   Layout,
   Page,
   ProgressBar,
+  Select,
   Text,
 } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -46,6 +47,18 @@ export const loader = async ({ request, params }) => {
     throw new Response("Influencer not found", { status: 404 });
   }
 
+  // Find all campaigns where this influencer (same handle) exists in this store
+  const sameHandleInfluencers = await db.influencer.findMany({
+    where: { handle: influencer.handle, campaign: { storeId: store.id } },
+    include: { campaign: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const campaignOptions = sameHandleInfluencers.map((inf) => ({
+    campaignId: inf.campaign.id,
+    campaignName: inf.campaign.name,
+    influencerId: inf.id,
+  }));
+
   const [stats, products, roleBreakdown, recentJourneys] = await Promise.all([
     getInfluencerStats(influencer.id),
     getProductIntelligence(store.id, { influencerId: influencer.id }),
@@ -59,6 +72,7 @@ export const loader = async ({ request, params }) => {
     influencer,
     campaignId: params.campaignId,
     campaignName: influencer.campaign.name,
+    campaignOptions,
     stats,
     products,
     frictionProducts,
@@ -68,9 +82,14 @@ export const loader = async ({ request, params }) => {
 };
 
 export default function InfluencerDetailPage() {
-  const { influencer, campaignId, campaignName, stats, products, frictionProducts, roleBreakdown, recentJourneys } =
+  const { influencer, campaignId, campaignName, campaignOptions, stats, products, frictionProducts, roleBreakdown, recentJourneys } =
     useLoaderData();
   const navigate = useNavigate();
+
+  const handleCampaignChange = (selectedCampaignId) => {
+    const option = campaignOptions.find((o) => o.campaignId === selectedCampaignId);
+    if (option) navigate(`/app/campaigns/${option.campaignId}/influencers/${option.influencerId}`);
+  };
   const { funnel } = stats;
 
   const funnelStages = [
@@ -125,6 +144,20 @@ export default function InfluencerDetailPage() {
         <button onClick={() => navigate(`/app/campaigns/${campaignId}`)}>Back</button>
       </ui-title-bar>
       <Layout>
+        {/* Campaign filter — only shown when influencer appears in multiple campaigns */}
+        {campaignOptions.length > 1 && (
+          <Layout.Section>
+            <div style={{ maxWidth: 320 }}>
+              <Select
+                label="Viewing campaign"
+                options={campaignOptions.map((o) => ({ label: o.campaignName, value: o.campaignId }))}
+                value={campaignId}
+                onChange={handleCampaignChange}
+              />
+            </div>
+          </Layout.Section>
+        )}
+
         {/* Stats row */}
         <Layout.Section>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "14px" }}>
