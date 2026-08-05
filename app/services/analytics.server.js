@@ -862,53 +862,48 @@ async function fetchShopifyDailyRevenue(shop, accessToken, since, until) {
     return [];
   }
 
-  const sinceStr = since.toISOString().split("T")[0];
-  const untilStr = until.toISOString().split("T")[0];
+  // Use orders GraphQL API — requires read_orders + PCD Level 1 only (no PII fields requested).
+  const sinceISO = since.toISOString();
+  const untilISO = until.toISOString();
+  const dayMap = {};
+  let cursor = null;
+  let hasNextPage = true;
+  let pageCount = 0;
 
-  // ShopifyQL aggregate query — daily gross sales totals, no PII.
-  // Requires read_analytics scope only (no Protected Customer Data approval).
-  const shopifyql = `FROM sales SINCE ${sinceStr} UNTIL ${untilStr} SHOW gross_sales TIMESERIES day`;
+  while (hasNextPage) {
+    const after = cursor ? `, after: ${JSON.stringify(cursor)}` : "";
+    const res = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
+      body: JSON.stringify({
+        query: `{ orders(first: 250, query: "created_at:>=${sinceISO} AND created_at:<=${untilISO}"${after}) { edges { node { createdAt totalPriceSet { shopMoney { amount } } } } pageInfo { hasNextPage endCursor } } }`,
+      }),
+    });
 
-  console.log(`[wf] fetchShopifyDailyRevenue: ${shopifyql}`);
+    if (!res.ok) throw new Error(`Shopify GraphQL ${res.status}`);
 
-  const res = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
-    body: JSON.stringify({
-      query: `{ shopifyqlQuery(query: ${JSON.stringify(shopifyql)}) { tableData { rows columns { name } } parseErrors } }`,
-    }),
-  });
+    const json = await res.json();
 
-  if (!res.ok) throw new Error(`Shopify GraphQL ${res.status}`);
+    if (json.errors) {
+      console.error(`[wf] fetchShopifyDailyRevenue errors: ${JSON.stringify(json.errors).slice(0, 400)}`);
+      return [];
+    }
 
-  const json = await res.json();
+    const orders = json?.data?.orders;
+    if (!orders) break;
 
-  if (json.errors) {
-    console.error(`[wf] fetchShopifyDailyRevenue errors: ${JSON.stringify(json.errors).slice(0, 400)}`);
-    return [];
+    for (const { node } of orders.edges) {
+      const date = node.createdAt.split("T")[0];
+      dayMap[date] = (dayMap[date] || 0) + parseFloat(node.totalPriceSet?.shopMoney?.amount || 0);
+    }
+
+    hasNextPage = orders.pageInfo.hasNextPage;
+    cursor = orders.pageInfo.endCursor;
+    pageCount++;
   }
 
-  const result = json?.data?.shopifyqlQuery;
-
-  if (result?.parseErrors?.length > 0) {
-    console.error(`[wf] fetchShopifyDailyRevenue ShopifyQL parse errors: ${JSON.stringify(result.parseErrors)}`);
-    return [];
-  }
-
-  const tableData = result?.tableData;
-  if (!tableData) {
-    console.error("[wf] fetchShopifyDailyRevenue: no tableData — check read_analytics scope is granted");
-    return [];
-  }
-
-  const { rows } = tableData;
-  console.log(`[wf] fetchShopifyDailyRevenue: rows=${rows?.length || 0}`);
-
-  // rows are objects: { day: "2026-06-01", gross_sales: "262.15" }
-  return (rows || []).map((row) => ({
-    date: row.day,
-    revenue: parseFloat(row.gross_sales || 0),
-  }));
+  console.log(`[wf] fetchShopifyDailyRevenue: ${Object.keys(dayMap).length} days across ${pageCount} page(s)`);
+  return Object.entries(dayMap).map(([date, revenue]) => ({ date, revenue }));
 }
 
 // ─── Recent visitor journeys ──────────────────────────────────────────────────
