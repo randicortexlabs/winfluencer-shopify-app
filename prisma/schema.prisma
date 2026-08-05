@@ -135,6 +135,7 @@ model LinkHub {
   title           String?
   destinations    Json        @default("[]")
   influencers     Json        @default("[]")
+  logoUrl         String?
   screen2Title    String?
   screen2Subtitle String?
   createdAt       DateTime    @default(now())

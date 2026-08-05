@@ -54,8 +54,8 @@ export const loader = async ({ request }) => {
   const screen2Title = linkHub.screen2Title || "Shout out your creator!";
   const screen2Subtitle = linkHub.screen2Subtitle || "Who introduced you to us? Give them credit — it helps them out!";
 
-  // Fetch store logo from Shopify using the stored offline access token
-  const logoUrl = await fetchStoreLogo(shop, store.accessToken);
+  // Use merchant-provided logo URL first, then try Shopify CDN, then fall back to initial
+  const logoUrl = linkHub.logoUrl || await fetchStoreLogo(shop, store.accessToken);
 
   const session = await db.hubSession.create({
     data: { storeId: store.id, linkHubId: linkHub.id, outcome: "abandoned" },

@@ -59,6 +59,7 @@ export const loader = async ({ request }) => {
       title: linkHub.title || "",
       destinations: Array.isArray(linkHub.destinations) ? linkHub.destinations : [],
       influencers: Array.isArray(linkHub.influencers) ? linkHub.influencers : [],
+      logoUrl: linkHub.logoUrl || "",
       screen2Title: linkHub.screen2Title || "",
       screen2Subtitle: linkHub.screen2Subtitle || "",
     },
@@ -89,6 +90,7 @@ export const action = async ({ request }) => {
 
   const enabled = formData.get("enabled") === "true";
   const title = String(formData.get("title") || "").trim().slice(0, 120);
+  const logoUrl = String(formData.get("logoUrl") || "").trim().slice(0, 500) || null;
   const screen2Title = String(formData.get("screen2Title") || "").trim().slice(0, 80) || null;
   const screen2Subtitle = String(formData.get("screen2Subtitle") || "").trim().slice(0, 160) || null;
 
@@ -109,7 +111,7 @@ export const action = async ({ request }) => {
 
   await db.linkHub.update({
     where: { storeId: store.id },
-    data: { enabled, title: title || null, destinations, influencers, screen2Title, screen2Subtitle },
+    data: { enabled, title: title || null, logoUrl, destinations, influencers, screen2Title, screen2Subtitle },
   });
 
   return { success: "Link Hub settings saved." };
@@ -121,6 +123,7 @@ export default function LinkHubPage() {
 
   const [enabled, setEnabled] = useState(linkHub.enabled);
   const [title, setTitle] = useState(linkHub.title);
+  const [logoUrl, setLogoUrl] = useState(linkHub.logoUrl);
   const [screen2Title, setScreen2Title] = useState(linkHub.screen2Title);
   const [screen2Subtitle, setScreen2Subtitle] = useState(linkHub.screen2Subtitle);
   const [destinations, setDestinations] = useState(
@@ -242,6 +245,7 @@ export default function LinkHubPage() {
           <input type="hidden" name="enabled" value={String(enabled)} />
           <input type="hidden" name="destinations" value={JSON.stringify(destinations)} />
           <input type="hidden" name="influencers" value={JSON.stringify(selectedInfluencers)} />
+          <input type="hidden" name="logoUrl" value={logoUrl} />
           <input type="hidden" name="screen2Title" value={screen2Title} />
           <input type="hidden" name="screen2Subtitle" value={screen2Subtitle} />
 
@@ -308,6 +312,29 @@ export default function LinkHubPage() {
                   autoComplete="off"
                   maxLength={120}
                   showCharacterCount
+                />
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+
+          {/* Branding */}
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <BlockStack gap="100">
+                  <Text variant="headingSm" as="h2">Logo</Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Paste the URL of your logo image. Shown at the top of the hub page. Leave blank to use your store initial.
+                  </Text>
+                </BlockStack>
+                <Divider />
+                <TextField
+                  label="Logo URL"
+                  value={logoUrl}
+                  onChange={setLogoUrl}
+                  placeholder="https://cdn.shopify.com/s/files/1/0000/logo.png"
+                  helpText="Upload your logo via Shopify Admin → Content → Files, then paste the URL here."
+                  autoComplete="off"
                 />
               </BlockStack>
             </Card>
