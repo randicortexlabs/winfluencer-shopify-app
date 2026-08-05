@@ -21,9 +21,17 @@ export const loader = async ({ request }) => {
   const { authenticate } = await import("../shopify.server");
   const { default: db } = await import("../db.server");
 
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const store = await db.store.findUnique({ where: { shop: session.shop } });
   if (!store) throw new Response("Store not found", { status: 404 });
+
+  // Fetch the store's primary domain for the hub URL
+  let primaryDomain = null;
+  try {
+    const res = await admin.graphql(`{ shop { primaryDomain { url } } }`);
+    const json = await res.json();
+    primaryDomain = json?.data?.shop?.primaryDomain?.url || null;
+  } catch {}
 
   // Upsert LinkHub so it always exists
   let linkHub = await db.linkHub.upsert({
@@ -54,6 +62,7 @@ export const loader = async ({ request }) => {
 
   return {
     shop: store.shop,
+    primaryDomain,
     linkHub: {
       enabled: linkHub.enabled,
       title: linkHub.title || "",
@@ -118,7 +127,7 @@ export const action = async ({ request }) => {
 };
 
 export default function LinkHubPage() {
-  const { shop, linkHub, allInfluencers, hubMetrics } = useLoaderData();
+  const { shop, primaryDomain, linkHub, allInfluencers, hubMetrics } = useLoaderData();
   const actionData = useActionData();
 
   const [enabled, setEnabled] = useState(linkHub.enabled);
@@ -136,7 +145,7 @@ export default function LinkHubPage() {
   );
   const [copied, setCopied] = useState(false);
 
-  const hubUrl = `https://${shop}/a/winfluencer`;
+  const hubUrl = `${primaryDomain || `https://${shop}`}/a/winfluencer`;
 
   const addDestination = useCallback(() => {
     setDestinations((prev) => [...prev, { title: "", url: "" }]);
