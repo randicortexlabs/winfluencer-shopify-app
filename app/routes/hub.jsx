@@ -54,13 +54,8 @@ export const loader = async ({ request }) => {
   const screen2Title = linkHub.screen2Title || "Shout out your creator!";
   const screen2Subtitle = linkHub.screen2Subtitle || "Who introduced you to us? Give them credit — it helps them out!";
 
-  // Fetch store logo from Shopify (non-blocking — fall back to initials if unavailable)
-  const shopifySession = await db.session.findFirst({
-    where: { shop, isOnline: false },
-    select: { accessToken: true },
-    orderBy: { expires: "desc" },
-  });
-  const logoUrl = await fetchStoreLogo(shop, shopifySession?.accessToken);
+  // Fetch store logo from Shopify using the stored offline access token
+  const logoUrl = await fetchStoreLogo(shop, store.accessToken);
 
   const session = await db.hubSession.create({
     data: { storeId: store.id, linkHubId: linkHub.id, outcome: "abandoned" },
