@@ -136,7 +136,7 @@ export default function LinkHubPage() {
   );
   const [copied, setCopied] = useState(false);
 
-  const hubUrl = `https://${shop}/a/creators`;
+  const hubUrl = `https://${shop}/a/winfluencer`;
 
   const addDestination = useCallback(() => {
     setDestinations((prev) => [...prev, { title: "", url: "" }]);

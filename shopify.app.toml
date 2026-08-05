@@ -44,5 +44,5 @@ redirect_urls = [ "https://app.winfluencer.online/api/auth" ]
 
 [app_proxy]
 url = "https://app.winfluencer.online/hub"
-subpath = "creators"
+subpath = "winfluencer"
 prefix = "a"
