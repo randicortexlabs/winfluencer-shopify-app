@@ -782,17 +782,34 @@ export async function getCampaignHubTaps(campaignId) {
 // ─── Store revenue trend ─────────────────────────────────────────────────────
 
 export async function getStoreRevenueTrend(storeId, shop, accessToken) {
-  const WEEKS = 20;
   const now = new Date();
-  const startDate = new Date(now);
-  startDate.setDate(startDate.getDate() - WEEKS * 7);
+  const MIN_WEEKS = 20;
+  const PRE_CAMPAIGN_WEEKS = 6; // always show at least 6 weeks before campaign launch
 
-  const [earliestCampaign, attributedEvents, shopifyDays] = await Promise.all([
-    db.campaign.findFirst({
-      where: { storeId, startDate: { not: null } },
-      orderBy: { startDate: "asc" },
-      select: { startDate: true },
-    }),
+  // Fetch campaign first so we can size the window to always include pre-campaign weeks
+  const earliestCampaign = await db.campaign.findFirst({
+    where: { storeId, startDate: { not: null } },
+    orderBy: { startDate: "asc" },
+    select: { startDate: true },
+  });
+
+  // Default window: 20 weeks back
+  const defaultStart = new Date(now);
+  defaultStart.setDate(defaultStart.getDate() - MIN_WEEKS * 7);
+
+  // Extend back if campaign start is close to or before the default window edge
+  let startDate = defaultStart;
+  if (earliestCampaign?.startDate) {
+    const launchDate = new Date(earliestCampaign.startDate);
+    const prelaunchStart = new Date(launchDate);
+    prelaunchStart.setDate(prelaunchStart.getDate() - PRE_CAMPAIGN_WEEKS * 7);
+    if (prelaunchStart < defaultStart) startDate = prelaunchStart;
+  }
+
+  const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+  const WEEKS = Math.ceil((now - startDate) / MS_PER_WEEK);
+
+  const [attributedEvents, shopifyDays] = await Promise.all([
     db.event.findMany({
       where: { storeId, eventType: "item_purchased", influencerId: { not: null }, timestamp: { gte: startDate } },
       select: { timestamp: true, price: true, quantity: true },
@@ -835,7 +852,8 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
       weekEnd.setDate(weekEnd.getDate() + 7);
       if (launchDate >= weekStart && launchDate < weekEnd) { campaignLaunchWeek = i; break; }
     }
-    if (campaignLaunchWeek === null && new Date(earliestCampaign.startDate) < startDate) {
+    // Campaign predates even the extended window — pin to week 0
+    if (campaignLaunchWeek === null && launchDate < startDate) {
       campaignLaunchWeek = 0;
     }
   }
