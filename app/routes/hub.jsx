@@ -51,6 +51,16 @@ export const loader = async ({ request }) => {
   const destinations = Array.isArray(linkHub.destinations) ? linkHub.destinations : [];
   const influencers = Array.isArray(linkHub.influencers) ? linkHub.influencers : [];
   const title = linkHub.title || shop.replace(".myshopify.com", "");
+  const screen2Title = linkHub.screen2Title || "Shout out your creator!";
+  const screen2Subtitle = linkHub.screen2Subtitle || "Who introduced you to us? Give them credit — it helps them out!";
+
+  // Fetch store logo from Shopify (non-blocking — fall back to initials if unavailable)
+  const shopifySession = await db.session.findFirst({
+    where: { shop, isOnline: false },
+    select: { accessToken: true },
+    orderBy: { expires: "desc" },
+  });
+  const logoUrl = await fetchStoreLogo(shop, shopifySession?.accessToken);
 
   const session = await db.hubSession.create({
     data: { storeId: store.id, linkHubId: linkHub.id, outcome: "abandoned" },
@@ -58,7 +68,7 @@ export const loader = async ({ request }) => {
 
   const shuffled = [...influencers].sort(() => 0.5 - Math.random());
 
-  return new Response(buildHtml({ title, destinations, influencers: shuffled, sessionId: session.id, shop }), {
+  return new Response(buildHtml({ title, destinations, influencers: shuffled, sessionId: session.id, shop, logoUrl, screen2Title, screen2Subtitle }), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
@@ -66,8 +76,27 @@ export const loader = async ({ request }) => {
   });
 };
 
-function buildHtml({ title, destinations, influencers, sessionId, shop }) {
+async function fetchStoreLogo(shop, accessToken) {
+  if (!accessToken) return null;
+  try {
+    const res = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
+      body: JSON.stringify({ query: "{ shop { brand { logo { image { url } } } } }" }),
+    });
+    const json = await res.json();
+    return json?.data?.shop?.brand?.logo?.image?.url || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildHtml({ title, destinations, influencers, sessionId, shop, logoUrl, screen2Title, screen2Subtitle }) {
   const initial = esc(title.trim()[0]?.toUpperCase() || "S");
+
+  const logoHtml = logoUrl
+    ? `<img src="${esc(logoUrl)}" alt="${esc(title)}" class="store-logo" />`
+    : `<div class="store-avatar">${initial}</div>`;
 
   const destCards = destinations.map((d) => `
     <button class="dest-card" data-url="${esc(sanitizeUrl(d.url))}" data-title="${esc(d.title)}">
@@ -326,6 +355,13 @@ function buildHtml({ title, destinations, influencers, sessionId, shop }) {
   }
 
   /* ── Footer ── */
+  .store-logo {
+    max-width: 140px;
+    max-height: 52px;
+    object-fit: contain;
+    margin-bottom: 16px;
+  }
+
   .hub-footer {
     margin-top: auto;
     padding-top: 32px;
@@ -387,7 +423,7 @@ function buildHtml({ title, destinations, influencers, sessionId, shop }) {
 
 <!-- Screen 1: Destination picker -->
 <div id="s1" class="screen">
-  <div class="store-avatar">${initial}</div>
+  ${logoHtml}
   <h1 class="store-title">${esc(title)}</h1>
   <p class="store-sub">Where would you like to go?</p>
   <div class="dest-grid">${destCards}</div>
@@ -402,8 +438,8 @@ function buildHtml({ title, destinations, influencers, sessionId, shop }) {
     </svg>
     Back
   </button>
-  <h2 class="section-title">Who sent you?</h2>
-  <p class="section-sub">Tap who inspired your visit</p>
+  <h2 class="section-title">${esc(screen2Title)}</h2>
+  <p class="section-sub">${esc(screen2Subtitle)}</p>
   <div class="inf-grid">${infCards}</div>
   <div class="skip-grid">
     <button class="skip-btn" id="nobody-btn">I found you myself</button>

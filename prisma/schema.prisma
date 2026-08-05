@@ -128,16 +128,18 @@ model TeamMember {
 }
 
 model LinkHub {
-  id           String      @id @default(cuid())
-  storeId      String      @unique
-  store        Store       @relation(fields: [storeId], references: [id])
-  enabled      Boolean     @default(false)
-  title        String?
-  destinations Json        @default("[]")
-  influencers  Json        @default("[]")
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  sessions     HubSession[]
+  id              String      @id @default(cuid())
+  storeId         String      @unique
+  store           Store       @relation(fields: [storeId], references: [id])
+  enabled         Boolean     @default(false)
+  title           String?
+  destinations    Json        @default("[]")
+  influencers     Json        @default("[]")
+  screen2Title    String?
+  screen2Subtitle String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  sessions        HubSession[]
 }
 
 model HubSession {
