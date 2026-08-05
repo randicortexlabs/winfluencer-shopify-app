@@ -926,6 +926,103 @@ async function fetchShopifyDailyRevenue(shop, accessToken, since, until) {
 
 // ─── Recent visitor journeys ──────────────────────────────────────────────────
 
+// ─── All influencers with bulk role computation ───────────────────────────────
+
+export async function getAllInfluencersWithRoles(storeId, { campaignId } = {}) {
+  const influencers = await db.influencer.findMany({
+    where: { campaign: { storeId, ...(campaignId ? { id: campaignId } : {}) } },
+    include: { campaign: true },
+  });
+  if (influencers.length === 0) return [];
+
+  const ids = influencers.map((i) => i.id);
+
+  const [eventGroups, purchaseEvents, checkoutGroups, visitorGroups, touchpoints] = await Promise.all([
+    db.event.groupBy({ by: ["influencerId", "eventType"], where: { influencerId: { in: ids } }, _count: true }),
+    db.event.findMany({ where: { influencerId: { in: ids }, eventType: "item_purchased" }, select: { influencerId: true, price: true, quantity: true } }),
+    db.event.groupBy({ by: ["influencerId"], where: { influencerId: { in: ids }, eventType: "checkout_completed" }, _count: true }),
+    db.event.groupBy({ by: ["influencerId"], where: { influencerId: { in: ids }, eventType: { in: ["page_viewed", "pageview"] }, NOT: { pageUrl: { contains: "/checkouts/" } } }, _count: true }),
+    db.touchpoint.findMany({ where: { influencerId: { in: ids } }, select: { sessionId: true, touchIndex: true, influencerId: true } }),
+  ]);
+
+  const eventMap = {};
+  for (const g of eventGroups) {
+    if (!g.influencerId) continue;
+    if (!eventMap[g.influencerId]) eventMap[g.influencerId] = {};
+    eventMap[g.influencerId][g.eventType] = g._count;
+  }
+  const revenueMap = {};
+  for (const e of purchaseEvents) {
+    if (!e.influencerId) continue;
+    revenueMap[e.influencerId] = (revenueMap[e.influencerId] || 0) + parseFloat(e.price || 0) * (e.quantity || 1);
+  }
+  const purchaseMap = {};
+  for (const g of checkoutGroups) { if (g.influencerId) purchaseMap[g.influencerId] = g._count; }
+  const visitorMap = {};
+  for (const g of visitorGroups) { if (g.influencerId) visitorMap[g.influencerId] = g._count; }
+
+  const sessionIds = [...new Set(touchpoints.map((tp) => tp.sessionId))];
+  const sessionMaxIndex = {};
+  if (sessionIds.length > 0) {
+    const allTps = await db.touchpoint.findMany({ where: { sessionId: { in: sessionIds } }, select: { sessionId: true, touchIndex: true } });
+    for (const tp of allTps) sessionMaxIndex[tp.sessionId] = Math.max(sessionMaxIndex[tp.sessionId] ?? 0, tp.touchIndex);
+  }
+
+  const roleMap = {};
+  for (const id of ids) roleMap[id] = { introducer: 0, influencer: 0, closer: 0, total: 0 };
+  for (const tp of touchpoints) {
+    if (!tp.influencerId || !roleMap[tp.influencerId]) continue;
+    const maxIdx = sessionMaxIndex[tp.sessionId] ?? 0;
+    roleMap[tp.influencerId].total++;
+    if (maxIdx === 0)           roleMap[tp.influencerId].closer++;
+    else if (tp.touchIndex === 0)         roleMap[tp.influencerId].introducer++;
+    else if (tp.touchIndex === maxIdx)    roleMap[tp.influencerId].closer++;
+    else                                  roleMap[tp.influencerId].influencer++;
+  }
+
+  const enriched = influencers.map((inf) => {
+    const events = eventMap[inf.id] || {};
+    const visitors = visitorMap[inf.id] || 0;
+    const addToCart = events["product_added_to_cart"] || 0;
+    const purchaseCount = purchaseMap[inf.id] || 0;
+    const revenue = revenueMap[inf.id] || 0;
+    const convRate = visitors > 0 ? ((purchaseCount / visitors) * 100).toFixed(1) : "0.0";
+    const aov = purchaseCount > 0 ? (revenue / purchaseCount).toFixed(2) : "0.00";
+
+    const r = roleMap[inf.id];
+    const { introducer, influencer: mid, closer, total: rTotal } = r;
+    let primaryRole = null;
+    if (rTotal > 0) {
+      if (closer >= introducer && closer >= mid) primaryRole = "Closer";
+      else if (introducer >= closer && introducer >= mid) primaryRole = "Introducer";
+      else primaryRole = "Influencer";
+    }
+
+    return {
+      id: inf.id,
+      name: inf.name,
+      handle: inf.handle,
+      platform: inf.platform,
+      campaignId: inf.campaignId,
+      campaignName: inf.campaign.name,
+      wfId: inf.wfId,
+      visitors,
+      addToCart,
+      purchases: purchaseCount,
+      revenue,
+      convRate: parseFloat(convRate),
+      aov: parseFloat(aov),
+      primaryRole,
+      introducerPct: rTotal > 0 ? Math.round((introducer / rTotal) * 100) : 0,
+      influencerPct: rTotal > 0 ? Math.round((mid / rTotal) * 100) : 0,
+      closerPct: rTotal > 0 ? Math.round((closer / rTotal) * 100) : 0,
+    };
+  });
+
+  enriched.sort((a, b) => b.revenue - a.revenue);
+  return enriched;
+}
+
 export async function getRecentJourneys(influencerId, limit = 10) {
   const touchpoints = await db.touchpoint.findMany({
     where: { influencerId },

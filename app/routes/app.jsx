@@ -110,6 +110,7 @@ export default function App() {
         <NavMenu>
           <Link to="/app" rel="home">Dashboard</Link>
           <Link to="/app/campaigns">Campaigns</Link>
+          <Link to="/app/influencers">Influencers</Link>
           <Link to="/app/products">Products</Link>
           <Link to="/app/linkhub">Link Hub</Link>
           <Link to="/app/settings">Settings</Link>
