@@ -258,8 +258,9 @@ export default function DashboardPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "14px" }}>
             <Card>
               <BlockStack gap="150">
-                <Text as="p" tone="subdued">Total Revenue</Text>
+                <Text as="p" tone="subdued">Attributed Revenue</Text>
                 <Text variant="headingLg" as="p">{formatCurrency(metrics.totalRevenue)}</Text>
+                <Text as="p" tone="subdued">influencer-driven sales</Text>
               </BlockStack>
             </Card>
             <Card>

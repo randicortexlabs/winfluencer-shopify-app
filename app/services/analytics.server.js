@@ -132,7 +132,7 @@ export async function getCampaignFunnelCounts(campaignId) {
 export async function getStoreOverviewMetrics(storeId) {
   const [funnel, totalRevenue] = await Promise.all([
     getStoreFunnelCounts(storeId),
-    sumRevenue({ storeId }),
+    sumRevenue({ storeId, influencerId: { not: null } }),
   ]);
 
   const avgConversion =
