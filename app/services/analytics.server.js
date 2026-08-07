@@ -828,6 +828,10 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
     weekEnd.setDate(weekEnd.getDate() + 7);
 
     const label = weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const weekEndDisplay = new Date(weekEnd);
+    weekEndDisplay.setDate(weekEndDisplay.getDate() - 1);
+    const endLabel = weekEndDisplay.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const isCurrentWeek = now >= weekStart && now < weekEnd;
 
     const storeTotal = shopifyDays
       .filter((d) => { const date = new Date(d.date); return date >= weekStart && date < weekEnd; })
@@ -837,7 +841,7 @@ export async function getStoreRevenueTrend(storeId, shop, accessToken) {
       .filter((e) => { const d = new Date(e.timestamp); return d >= weekStart && d < weekEnd; })
       .reduce((sum, e) => sum + parseFloat(e.price || 0) * (e.quantity || 1), 0);
 
-    weeks.push({ week: label, storeTotal: Math.round(storeTotal * 100) / 100, attributed: Math.round(attributed * 100) / 100 });
+    weeks.push({ week: label, weekEnd: endLabel, isCurrentWeek, storeTotal: Math.round(storeTotal * 100) / 100, attributed: Math.round(attributed * 100) / 100 });
   }
 
   // Find campaign launch week index

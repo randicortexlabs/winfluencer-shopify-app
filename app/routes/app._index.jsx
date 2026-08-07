@@ -95,6 +95,36 @@ function convRateColor(rate) {
   return "#8C9196";
 }
 
+function RevenueTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0]?.payload;
+  return (
+    <div style={{ background: "#fff", border: "0.5px solid #E1E3E5", borderRadius: "6px", padding: "8px 12px", fontSize: "12px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
+      <div style={{ fontWeight: 600, marginBottom: "6px", color: "#202223" }}>
+        {label} – {data?.weekEnd}
+        {data?.isCurrentWeek && (
+          <span style={{ marginLeft: "6px", fontSize: "10px", fontWeight: 400, color: "#6D7175", background: "#F1F2F3", borderRadius: "4px", padding: "1px 5px" }}>
+            current week
+          </span>
+        )}
+      </div>
+      {payload.map((p) => (
+        <div key={p.dataKey} style={{ display: "flex", justifyContent: "space-between", gap: "16px", marginTop: "2px" }}>
+          <span style={{ color: "#6D7175" }}>{p.dataKey === "storeTotal" ? "Store total" : "Attributed"}</span>
+          <span style={{ fontWeight: 600, color: p.fill, fontVariantNumeric: "tabular-nums" }}>
+            ${Number(p.value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+      ))}
+      {data?.isCurrentWeek && (
+        <div style={{ marginTop: "6px", fontSize: "10px", color: "#6D7175", borderTop: "0.5px solid #F1F2F3", paddingTop: "5px" }}>
+          Week in progress — totals will grow until {data?.weekEnd}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SankeyNode({ x, y, width, height, index, payload }) {
   const name = payload?.name || "";
   const funnelStages = ["Page View", "Product View", "Add to Cart", "Checkout", "Purchase"];
@@ -344,7 +374,7 @@ export default function DashboardPage() {
                   <BlockStack gap="100">
                     <Text variant="headingSm" as="h2">Store revenue trend vs. attributed revenue</Text>
                     <Text as="p" tone="subdued" variant="bodySm">
-                      Total Shopify orders (gray) alongside influencer-attributed revenue (orange) — last 20 weeks
+                      Total Shopify orders (gray) alongside influencer-attributed revenue (orange) — each bar = one week · hover for date range
                     </Text>
                   </BlockStack>
                   <InlineStack gap="200">
@@ -353,6 +383,7 @@ export default function DashboardPage() {
                     {revenueTrend.campaignLaunchWeek !== null && (
                       <InlineStack gap="100" blockAlign="center"><div style={{ width: "10px", height: "2px", background: "#2C6ECB" }} /><Text as="p" variant="bodySm" tone="subdued">Campaign launch</Text></InlineStack>
                     )}
+                    <InlineStack gap="100" blockAlign="center"><div style={{ width: "10px", height: "10px", borderRadius: "2px", background: "#B0BEC5", opacity: 0.45 }} /><Text as="p" variant="bodySm" tone="subdued">Current week</Text></InlineStack>
                   </InlineStack>
                 </InlineStack>
 
@@ -395,12 +426,20 @@ export default function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#F1F2F3" vertical={false} />
                       <XAxis dataKey="week" tick={{ fontSize: 9, fill: "#6D7175" }} tickLine={false} axisLine={false} interval={3} />
                       <YAxis tick={{ fontSize: 9, fill: "#6D7175" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={38} />
-                      <Tooltip
-                        contentStyle={{ fontSize: "12px", borderRadius: "6px", border: "0.5px solid #E1E3E5" }}
-                        formatter={(value, name) => [`$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, name === "storeTotal" ? "Store total" : "Attributed"]}
+                      <Tooltip content={<RevenueTooltip />} />
+                      <Bar dataKey="storeTotal" radius={[2, 2, 0, 0]} fill="#B0BEC5"
+                        label={false}
+                        shape={(props) => {
+                          const { x, y, width, height, payload } = props;
+                          return <rect x={x} y={y} width={width} height={height} fill="#B0BEC5" opacity={payload.isCurrentWeek ? 0.45 : 1} rx={2} ry={2} />;
+                        }}
                       />
-                      <Bar dataKey="storeTotal" fill="#B0BEC5" radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="attributed" fill="#E8854A" radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="attributed" radius={[2, 2, 0, 0]} fill="#E8854A"
+                        shape={(props) => {
+                          const { x, y, width, height, payload } = props;
+                          return <rect x={x} y={y} width={width} height={height} fill="#E8854A" opacity={payload.isCurrentWeek ? 0.45 : 1} rx={2} ry={2} />;
+                        }}
+                      />
                       {revenueTrend.campaignLaunchWeek !== null && revenueTrend.weeks[revenueTrend.campaignLaunchWeek] && (
                         <ReferenceLine
                           x={revenueTrend.weeks[revenueTrend.campaignLaunchWeek].week}
