@@ -136,8 +136,8 @@ export async function getStoreOverviewMetrics(storeId) {
   ]);
 
   const avgConversion =
-    funnel.visitors > 0
-      ? ((funnel.purchased / funnel.visitors) * 100).toFixed(1)
+    funnel.uniqueVisitors > 0
+      ? ((funnel.purchased / funnel.uniqueVisitors) * 100).toFixed(1)
       : null;
 
   return {
@@ -153,7 +153,6 @@ export async function getTopInfluencers(storeId, limit = 5) {
   const influencers = await db.influencer.findMany({
     where: { campaign: { storeId } },
     include: { campaign: true },
-    take: 50,
   });
 
   if (influencers.length === 0) return [];
@@ -292,8 +291,8 @@ export async function getInfluencerStats(influencerId) {
   ]);
 
   const convRate =
-    funnel.visitors > 0
-      ? ((funnel.purchased / funnel.visitors) * 100).toFixed(1)
+    funnel.uniqueVisitors > 0
+      ? ((funnel.purchased / funnel.uniqueVisitors) * 100).toFixed(1)
       : "0.0";
   const aov =
     funnel.purchased > 0 ? (revenue / funnel.purchased).toFixed(2) : "0.00";

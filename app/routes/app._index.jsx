@@ -29,7 +29,11 @@ export const loader = async ({ request }) => {
 
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
-  const accessToken = session.accessToken;
+
+  // Use the offline (permanent) session token for Admin API calls.
+  // session.accessToken is the online token — it expires when the merchant logs out.
+  const offlineSession = await db.session.findFirst({ where: { shop, isOnline: false } });
+  const accessToken = offlineSession?.accessToken || session.accessToken;
 
   let store = await db.store.findUnique({ where: { shop } });
   let isNewInstall = false;

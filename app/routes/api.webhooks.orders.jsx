@@ -76,6 +76,10 @@ export async function action({ request }) {
     }
 
     const shopifyOrderId = String(order.id ?? "");
+
+    const existingOrder = await db.order.findFirst({ where: { storeId: store.id, shopifyOrderId } });
+    if (existingOrder) return new Response(null, { status: 200 });
+
     const totalPrice = Number.parseFloat(
       String(order.total_price ?? order.current_total_price ?? "0"),
     );

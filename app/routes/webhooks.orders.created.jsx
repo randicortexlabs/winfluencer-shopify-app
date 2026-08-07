@@ -13,11 +13,21 @@ export const action = async ({ request }) => {
     const existing = await db.order.findFirst({ where: { storeId: store.id, shopifyOrderId } });
     if (existing) return new Response();
 
+    const noteAttrs = Array.isArray(payload.note_attributes) ? payload.note_attributes : [];
+    const wfId = noteAttrs.find((a) => a?.name === "wf_influencer_id")?.value || null;
+
+    let influencerId = null;
+    if (wfId) {
+      const influencer = await db.influencer.findUnique({ where: { wfId } });
+      if (influencer) influencerId = influencer.id;
+    }
+
     await db.order.create({
       data: {
         storeId: store.id,
         shopifyOrderId,
-        wfId: null,
+        wfId,
+        influencerId,
         totalPrice: parseFloat(payload.total_price || 0),
         currency: payload.currency || "USD",
         lineItems: payload.line_items || [],
